@@ -3,6 +3,7 @@ import { ClassTeam, CompetitionEvent, GradeConfig, Student, Team } from '../type
 import { Button } from './Button';
 import { Plus, Trash, CheckSquare, Square, Users, Trophy, ClipboardList, Settings2, Medal, UserPlus, ChevronDown, ChevronUp, Check, AlertCircle, X, Copy } from 'lucide-react';
 import { MatrixRecordTable } from './MatrixRecordTable';
+import { ScoreboardSummary } from './ScoreboardSummary';
 import { CreateClassModal } from './CreateClassModal';
 import { MultiClassParticipantModal } from './MultiClassParticipantModal';
 import { MultiClassTeamCreationModal } from './MultiClassTeamCreationModal';
@@ -797,10 +798,16 @@ export const GradeView: React.FC<GradeViewProps> = ({
         {/* Matrix Record Table */}
         <div className="flex-1 overflow-auto p-6 bg-slate-50">
           <div className="max-w-full mx-auto">
+            {/* Scoreboard Summary */}
+            <ScoreboardSummary
+              classes={gradeClasses}
+              activeEvents={activeEvents}
+            />
+
             <div className="mb-6">
               <h3 className="text-xl font-bold text-slate-900">경기 기록 매트릭스</h3>
               <p className="text-slate-500 mt-1">
-                각 셀을 클릭하여 학급별 종목별 기록을 입력하세요. 총점은 자동으로 계산됩니다.
+                종목명을 클릭하여 세부 정보를 펼치거나 접을 수 있습니다. 총점은 자동으로 계산됩니다.
               </p>
             </div>
 

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ClassTeam, CompetitionEvent } from '../types';
-import { Users, Check, ChevronDown, ChevronUp, Edit3 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Edit3 } from 'lucide-react';
 
 interface MatrixRecordTableProps {
   classes: ClassTeam[];
@@ -15,33 +15,25 @@ export const MatrixRecordTable: React.FC<MatrixRecordTableProps> = ({
   onUpdateClasses,
   onEditParticipants,
 }) => {
-  // 모든 셀이 기본적으로 펼쳐진 상태 (collapsedCells로 접힌 셀만 추적)
-  const [collapsedCells, setCollapsedCells] = useState<Set<string>>(new Set());
+  // 종목별 접기/펼치기 상태 (기본값: 모두 접힌 상태)
+  const [collapsedEvents, setCollapsedEvents] = useState<Set<string>>(
+    new Set(activeEvents.map(e => e.id))
+  );
 
-  const toggleCell = (classId: string, eventId: string) => {
-    const cellKey = `${classId}_${eventId}`;
-    setCollapsedCells(prev => {
+  const toggleEventRow = (eventId: string) => {
+    setCollapsedEvents(prev => {
       const newSet = new Set(prev);
-      if (newSet.has(cellKey)) {
-        newSet.delete(cellKey);
+      if (newSet.has(eventId)) {
+        newSet.delete(eventId);
       } else {
-        newSet.add(cellKey);
+        newSet.add(eventId);
       }
       return newSet;
     });
   };
 
-  const isCellExpanded = (classId: string, eventId: string) => {
-    return !collapsedCells.has(`${classId}_${eventId}`);
-  };
-
-  const getClassTotalScore = (classTeam: ClassTeam) => {
-    let total = 0;
-    activeEvents.forEach(evt => {
-      const res = classTeam.results[evt.id];
-      if (res) total += res.score;
-    });
-    return total;
+  const isEventExpanded = (eventId: string) => {
+    return !collapsedEvents.has(eventId);
   };
 
   const handleStudentScoreChange = (classId: string, eventId: string, studentId: string, score: number) => {
@@ -72,242 +64,409 @@ export const MatrixRecordTable: React.FC<MatrixRecordTableProps> = ({
     onUpdateClasses(updatedClasses);
   };
 
+  const handleTeamScoreChange = (classId: string, eventId: string, teamId: string, score: number) => {
+    const updatedClasses = classes.map(c => {
+      if (c.id !== classId) return c;
+      const res = c.results[eventId];
+      if (!res || !res.teams) return c;
+
+      const updatedTeams = res.teams.map(t =>
+        t.id === teamId ? { ...t, score: score } : t
+      );
+      const totalScore = updatedTeams.reduce((sum, t) => sum + t.score, 0);
+
+      return {
+        ...c,
+        results: {
+          ...c.results,
+          [eventId]: { ...res, teams: updatedTeams, score: totalScore }
+        }
+      };
+    });
+    onUpdateClasses(updatedClasses);
+  };
+
+  if (classes.length === 0) {
+    return (
+      <div className="bg-white rounded-lg p-8 text-center text-slate-400">
+        등록된 학급이 없습니다. 먼저 학급을 생성해주세요.
+      </div>
+    );
+  }
+
+  if (activeEvents.length === 0) {
+    return (
+      <div className="bg-white rounded-lg p-8 text-center text-slate-400">
+        선택된 종목이 없습니다. 종목 선정 탭에서 종목을 선택해주세요.
+      </div>
+    );
+  }
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full border-collapse bg-white shadow-sm rounded-lg overflow-hidden">
-        <thead>
+        {/* Header - 학급명들 */}
+        <thead className="sticky top-0 z-20">
           <tr className="bg-gradient-to-r from-indigo-600 to-indigo-500 text-white">
-            <th className="sticky left-0 z-10 bg-indigo-600 px-4 py-3 text-left text-sm font-bold min-w-[120px] border-r border-indigo-500">
-              학급
+            <th className="sticky left-0 z-30 bg-indigo-600 px-4 py-3 text-left text-sm font-bold w-[160px] border-r border-indigo-500">
+              종목
             </th>
-            {activeEvents.map((evt) => (
+            {classes.map((cls) => (
               <th
-                key={evt.id}
-                className="px-4 py-3 text-center text-xs font-bold min-w-[200px] border-r border-indigo-500 last:border-r-0"
+                key={cls.id}
+                className="px-4 py-3 text-center text-sm font-bold border-r border-indigo-500 last:border-r-0"
+                style={{ minWidth: '150px', flex: '1 1 0' }}
               >
-                <div className="flex flex-col gap-1">
-                  <span className="text-sm">{evt.name}</span>
-                  <span
-                    className={`text-[10px] px-2 py-0.5 rounded font-normal ${
-                      evt.type === 'TEAM' ? 'bg-purple-400/30 text-purple-100' :
-                      evt.type === 'PAIR' ? 'bg-green-400/30 text-green-100' :
-                      'bg-blue-400/30 text-blue-100'
-                    }`}
-                  >
-                    {evt.type === 'TEAM' ? '단체전' : evt.type === 'PAIR' ? '짝 종목' : '개인전'}
-                  </span>
-                </div>
+                {cls.name}
               </th>
             ))}
-            <th className="sticky right-0 z-10 bg-indigo-700 px-4 py-3 text-center text-sm font-bold min-w-[100px] border-l border-indigo-500">
-              총점
-            </th>
           </tr>
         </thead>
+
+        {/* Body - 종목별 행 */}
         <tbody>
-          {classes.map((cls, classIndex) => {
-            const totalScore = getClassTotalScore(cls);
-            const isEvenRow = classIndex % 2 === 0;
+          {activeEvents.map((evt, eventIndex) => {
+            const isExpanded = isEventExpanded(evt.id);
+            const isEvenRow = eventIndex % 2 === 0;
 
             return (
-              <React.Fragment key={cls.id}>
-                <tr className={`${isEvenRow ? 'bg-white' : 'bg-slate-50'}`}>
-                  <td className={`sticky left-0 z-10 ${isEvenRow ? 'bg-white' : 'bg-slate-50'} px-4 py-3 border-r border-slate-200`}>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-slate-900">{cls.name}</span>
-                      <span className="text-xs text-slate-400">
-                        <Users className="w-3 h-3 inline mr-1" />
-                        {cls.students.length}명
-                      </span>
+              <tr
+                key={evt.id}
+                className={`${isEvenRow ? 'bg-white' : 'bg-slate-50'} border-b border-slate-200`}
+              >
+                {/* 종목명 칼럼 (고정) */}
+                <td
+                  className={`sticky left-0 z-10 ${
+                    isEvenRow ? 'bg-indigo-50' : 'bg-indigo-100/50'
+                  } px-3 py-2 border-r-2 border-indigo-200 w-[160px]`}
+                >
+                  <button
+                    onClick={() => toggleEventRow(evt.id)}
+                    className="flex items-center gap-2 w-full text-left hover:text-indigo-700 transition-colors"
+                  >
+                    {isExpanded ? (
+                      <ChevronDown className="w-4 h-4 text-indigo-600 flex-shrink-0" />
+                    ) : (
+                      <ChevronRight className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold text-sm text-slate-900 truncate whitespace-nowrap">
+                        {evt.name}
+                        <span
+                          className={`ml-1 text-[10px] px-1.5 py-0.5 rounded font-normal ${
+                            evt.type === 'TEAM'
+                              ? 'bg-purple-100 text-purple-700'
+                              : evt.type === 'PAIR'
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-blue-100 text-blue-700'
+                          }`}
+                        >
+                          {evt.type === 'TEAM' ? '단체' : evt.type === 'PAIR' ? '짝' : '개인'}
+                        </span>
+                      </div>
                     </div>
-                  </td>
-                  {activeEvents.map((evt) => {
-                    const result = cls.results[evt.id];
-                    const score = result?.score || 0;
-                    const isExpanded = isCellExpanded(cls.id, evt.id);
+                  </button>
+                </td>
 
-                    // Calculate participant count based on event type
-                    let participantCount = 0;
-                    if (evt.type === 'INDIVIDUAL') {
-                      // Use participantIds if available, otherwise default to 0
-                      participantCount = result?.participantIds?.length || 0;
-                    } else if (evt.type === 'TEAM' || evt.type === 'PAIR') {
-                      // Count unique participants across all teams
-                      if (result?.teams && result.teams.length > 0) {
-                        const uniqueMembers = new Set(result.teams.flatMap(t => t.memberIds));
-                        participantCount = uniqueMembers.size;
-                      } else {
-                        participantCount = result?.teamParticipantIds?.length || 0;
-                      }
+                {/* 각 학급별 데이터 셀 */}
+                {classes.map((cls) => {
+                  const result = cls.results[evt.id];
+                  const score = result?.score || 0;
+
+                  // 참가 인원 계산
+                  let participantCount = 0;
+                  if (evt.type === 'INDIVIDUAL') {
+                    participantCount = result?.participantIds?.length || 0;
+                  } else if (evt.type === 'TEAM' || evt.type === 'PAIR') {
+                    if (result?.teams && result.teams.length > 0) {
+                      const uniqueMembers = new Set(result.teams.flatMap(t => t.memberIds));
+                      participantCount = uniqueMembers.size;
+                    } else {
+                      participantCount = result?.teamParticipantIds?.length || 0;
                     }
+                  }
 
-                    return (
-                      <td
-                        key={evt.id}
-                        className="px-2 py-2 border-r border-slate-200 last:border-r-0"
-                      >
-                        <div className="flex flex-col gap-2">
-                          {/* Score Display */}
-                          <button
-                            onClick={() => toggleCell(cls.id, evt.id)}
-                            className="w-full px-3 py-2 rounded-lg border-2 transition-all hover:shadow-md bg-indigo-50 border-indigo-200 hover:bg-indigo-100"
-                          >
-                            <div className="flex items-center justify-between">
-                              <span className="text-2xl font-bold text-indigo-700">
-                                {score}
-                              </span>
-                              <div className="flex flex-col items-end gap-1">
-                                <span className="text-[10px] text-slate-500">
-                                  {participantCount}명
-                                </span>
-                                {isExpanded ? (
-                                  <ChevronUp className="w-4 h-4 text-indigo-600" />
-                                ) : (
-                                  <ChevronDown className="w-4 h-4 text-slate-400" />
+                  return (
+                    <td
+                      key={cls.id}
+                      className={`px-3 py-3 border-r border-slate-200 last:border-r-0 align-top ${
+                        isEvenRow ? 'bg-white' : 'bg-slate-50'
+                      }`}
+                    >
+                      {/* 접힌 상태: 점수만 표시 */}
+                      {!isExpanded && (
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-indigo-700">{score}</div>
+                          <div className="text-[10px] text-slate-400 mt-1">{participantCount}명</div>
+                        </div>
+                      )}
+
+                      {/* 펼친 상태: 상세 정보 */}
+                      {isExpanded && (
+                        <div className="space-y-2">
+                          {/* 점수 표시 */}
+                          <div className="bg-indigo-50 rounded-lg p-2 border border-indigo-200 text-center">
+                            <div className="text-2xl font-bold text-indigo-700">{score}</div>
+                            <div className="text-[10px] text-slate-400">{participantCount}명 참가</div>
+                          </div>
+
+                          {/* 개인전 */}
+                          {evt.type === 'INDIVIDUAL' && (
+                            <div className="bg-slate-50 rounded-lg p-2 border border-slate-200">
+                              <div className="flex items-center justify-between mb-2">
+                                <p className="text-[10px] font-bold text-slate-500 uppercase">
+                                  학생별 점수
+                                </p>
+                                {onEditParticipants && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onEditParticipants(evt.id, cls.id);
+                                    }}
+                                    className="flex items-center gap-1 px-2 py-1 text-[10px] text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                    title="출전 학생 수정"
+                                  >
+                                    <Edit3 className="w-3 h-3" />
+                                    출전 수정
+                                  </button>
                                 )}
                               </div>
-                            </div>
-                          </button>
 
-                          {/* Expanded Details */}
-                          {isExpanded && (
-                            <div className="bg-slate-50 rounded-lg p-3 border border-slate-200 space-y-2">
-                              {(evt.type === 'TEAM' || evt.type === 'PAIR') ? (
-                                // Team/Pair Event - Show Teams
-                                <>
-                                  {result?.teams && result.teams.length > 0 ? (
-                                    <div className="space-y-2">
-                                      <p className="text-[10px] font-bold text-slate-500 uppercase">팀별 점수</p>
-                                      {result.teams.map((team) => (
-                                        <div key={team.id} className="bg-white rounded-lg p-2 border border-slate-200">
-                                          <div className="flex items-center justify-between mb-1">
-                                            <span className="text-xs font-bold text-slate-700 truncate">
-                                              {team.name}
-                                            </span>
-                                            <input
-                                              type="number"
-                                              value={team.score || ''}
-                                              onChange={(e) => {
-                                                const newScore = parseInt(e.target.value) || 0;
-                                                const updatedClasses = classes.map(c => {
-                                                  if (c.id !== cls.id) return c;
-                                                  const res = c.results[evt.id];
-                                                  if (!res || !res.teams) return c;
-
-                                                  const updatedTeams = res.teams.map(t =>
-                                                    t.id === team.id ? { ...t, score: newScore } : t
-                                                  );
-                                                  const totalScore = updatedTeams.reduce((sum, t) => sum + t.score, 0);
-
-                                                  return {
-                                                    ...c,
-                                                    results: {
-                                                      ...c.results,
-                                                      [evt.id]: { ...res, teams: updatedTeams, score: totalScore }
-                                                    }
-                                                  };
-                                                });
-                                                onUpdateClasses(updatedClasses);
-                                              }}
-                                              className="w-16 px-2 py-1 text-xs text-center border border-slate-200 rounded focus:ring-2 focus:ring-indigo-500 outline-none"
-                                              onClick={(e) => e.stopPropagation()}
-                                            />
-                                          </div>
-                                          <div className="flex flex-wrap gap-1 mt-1">
-                                            {team.memberIds.map((memberId) => {
-                                              const student = cls.students.find(s => s.id === memberId);
-                                              return (
-                                                <span
-                                                  key={memberId}
-                                                  className="text-[10px] px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded"
-                                                >
-                                                  {student?.name || '???'}
-                                                </span>
-                                              );
-                                            })}
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  ) : (
-                                    // Legacy format or no teams yet
-                                    <div className="text-center py-4">
-                                      <p className="text-xs text-slate-500">
-                                        팀이 아직 구성되지 않았습니다.
-                                      </p>
-                                      <p className="text-[10px] text-slate-400 mt-1">
-                                        종목 선정 탭에서 팀을 구성해주세요.
-                                      </p>
-                                    </div>
-                                  )}
-                                </>
-                              ) : (
-                                // Individual Event - Show only participating students
+                              {result?.participantIds && result.participantIds.length > 0 ? (
                                 <div className="space-y-2">
-                                  <div className="flex items-center justify-between mb-1">
-                                    <p className="text-[10px] font-bold text-slate-500 uppercase">학생별 점수</p>
-                                    {onEditParticipants && (
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          onEditParticipants(evt.id, cls.id);
-                                        }}
-                                        className="flex items-center gap-1 px-2 py-1 text-[10px] text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                                        title="출전 학생 수정"
-                                      >
-                                        <Edit3 className="w-3 h-3" />
-                                        출전 수정
-                                      </button>
-                                    )}
-                                  </div>
-                                  {result?.participantIds && result.participantIds.length > 0 ? (
-                                    <div className="space-y-1">
-                                      {result.participantIds.map((studentId) => {
-                                        const student = cls.students.find(s => s.id === studentId);
-                                        if (!student) return null;
-                                        const studentScore = result?.studentScores?.[studentId] || 0;
-                                        return (
-                                          <div key={studentId} className="flex items-center gap-2">
-                                            <span className="text-xs text-slate-700 flex-1 truncate">{student.name}</span>
-                                            <input
-                                              type="number"
-                                              value={studentScore || ''}
-                                              onChange={(e) => handleStudentScoreChange(cls.id, evt.id, studentId, parseInt(e.target.value) || 0)}
-                                              className="w-16 px-2 py-1 text-xs text-center border border-slate-200 rounded focus:ring-2 focus:ring-indigo-500 outline-none"
-                                              onClick={(e) => e.stopPropagation()}
-                                            />
-                                          </div>
-                                        );
-                                      })}
+                                  {result.participantIds.map((studentId) => {
+                                    const student = cls.students.find(s => s.id === studentId);
+                                    if (!student) return null;
+                                    const studentScore = result?.studentScores?.[studentId] || 0;
+                                    return (
+                                      <div key={studentId} className="flex items-center gap-2">
+                                        <span className="text-base font-bold text-slate-900 flex-1 truncate min-w-[60px]">
+                                          {student.name}
+                                        </span>
+                                        <div className="flex items-center gap-1">
+                                          {/* -10 버튼 */}
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleStudentScoreChange(
+                                                cls.id,
+                                                evt.id,
+                                                studentId,
+                                                Math.max(0, studentScore - 10)
+                                              );
+                                            }}
+                                            className="w-8 h-8 flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-600 rounded border border-slate-300 transition-colors text-xs font-medium touch-manipulation active:bg-slate-300"
+                                          >
+                                            -10
+                                          </button>
+                                          {/* -1 버튼 */}
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleStudentScoreChange(
+                                                cls.id,
+                                                evt.id,
+                                                studentId,
+                                                Math.max(0, studentScore - 1)
+                                              );
+                                            }}
+                                            className="w-7 h-8 flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-600 rounded border border-slate-300 transition-colors text-xs font-medium touch-manipulation active:bg-slate-300"
+                                          >
+                                            -1
+                                          </button>
+                                          {/* 점수 입력 필드 */}
+                                          <input
+                                            type="number"
+                                            value={studentScore || ''}
+                                            onChange={(e) =>
+                                              handleStudentScoreChange(
+                                                cls.id,
+                                                evt.id,
+                                                studentId,
+                                                parseInt(e.target.value) || 0
+                                              )
+                                            }
+                                            className="w-14 h-8 px-2 text-sm text-center font-bold border-2 border-indigo-300 rounded focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white text-indigo-700 touch-manipulation"
+                                            onClick={(e) => e.stopPropagation()}
+                                          />
+                                          {/* +1 버튼 */}
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleStudentScoreChange(
+                                                cls.id,
+                                                evt.id,
+                                                studentId,
+                                                studentScore + 1
+                                              );
+                                            }}
+                                            className="w-7 h-8 flex items-center justify-center bg-indigo-100 hover:bg-indigo-200 text-indigo-600 rounded border border-indigo-300 transition-colors text-xs font-medium touch-manipulation active:bg-indigo-300"
+                                          >
+                                            +1
+                                          </button>
+                                          {/* +10 버튼 */}
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleStudentScoreChange(
+                                                cls.id,
+                                                evt.id,
+                                                studentId,
+                                                studentScore + 10
+                                              );
+                                            }}
+                                            className="w-8 h-8 flex items-center justify-center bg-indigo-100 hover:bg-indigo-200 text-indigo-600 rounded border border-indigo-300 transition-colors text-xs font-medium touch-manipulation active:bg-indigo-300"
+                                          >
+                                            +10
+                                          </button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <div className="text-center py-3">
+                                  <p className="text-xs text-slate-500">
+                                    출전 학생이 선택되지 않았습니다.
+                                  </p>
+                                  <p className="text-[10px] text-slate-400 mt-1">
+                                    종목 선정 탭에서 선택해주세요.
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* 단체전/짝 종목 */}
+                          {(evt.type === 'TEAM' || evt.type === 'PAIR') && (
+                            <div className="bg-slate-50 rounded-lg p-2 border border-slate-200">
+                              <p className="text-[10px] font-bold text-slate-500 uppercase mb-2">
+                                팀별 점수
+                              </p>
+
+                              {result?.teams && result.teams.length > 0 ? (
+                                <div className="space-y-2">
+                                  {result.teams.map((team) => (
+                                    <div
+                                      key={team.id}
+                                      className="bg-white rounded-lg p-2 border border-slate-200"
+                                    >
+                                      <div className="flex items-center gap-2 mb-2">
+                                        <span className="text-base font-bold text-slate-900 truncate flex-1 min-w-[60px]">
+                                          {team.name}
+                                        </span>
+                                        <div className="flex items-center gap-1">
+                                          {/* -10 버튼 */}
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleTeamScoreChange(
+                                                cls.id,
+                                                evt.id,
+                                                team.id,
+                                                Math.max(0, team.score - 10)
+                                              );
+                                            }}
+                                            className="w-8 h-8 flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-600 rounded border border-slate-300 transition-colors text-xs font-medium touch-manipulation active:bg-slate-300"
+                                          >
+                                            -10
+                                          </button>
+                                          {/* -1 버튼 */}
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleTeamScoreChange(
+                                                cls.id,
+                                                evt.id,
+                                                team.id,
+                                                Math.max(0, team.score - 1)
+                                              );
+                                            }}
+                                            className="w-7 h-8 flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-600 rounded border border-slate-300 transition-colors text-xs font-medium touch-manipulation active:bg-slate-300"
+                                          >
+                                            -1
+                                          </button>
+                                          {/* 점수 입력 필드 */}
+                                          <input
+                                            type="number"
+                                            value={team.score || ''}
+                                            onChange={(e) =>
+                                              handleTeamScoreChange(
+                                                cls.id,
+                                                evt.id,
+                                                team.id,
+                                                parseInt(e.target.value) || 0
+                                              )
+                                            }
+                                            className="w-14 h-8 px-2 text-sm text-center font-bold border-2 border-indigo-300 rounded focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white text-indigo-700 touch-manipulation"
+                                            onClick={(e) => e.stopPropagation()}
+                                          />
+                                          {/* +1 버튼 */}
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleTeamScoreChange(
+                                                cls.id,
+                                                evt.id,
+                                                team.id,
+                                                team.score + 1
+                                              );
+                                            }}
+                                            className="w-7 h-8 flex items-center justify-center bg-indigo-100 hover:bg-indigo-200 text-indigo-600 rounded border border-indigo-300 transition-colors text-xs font-medium touch-manipulation active:bg-indigo-300"
+                                          >
+                                            +1
+                                          </button>
+                                          {/* +10 버튼 */}
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleTeamScoreChange(
+                                                cls.id,
+                                                evt.id,
+                                                team.id,
+                                                team.score + 10
+                                              );
+                                            }}
+                                            className="w-8 h-8 flex items-center justify-center bg-indigo-100 hover:bg-indigo-200 text-indigo-600 rounded border border-indigo-300 transition-colors text-xs font-medium touch-manipulation active:bg-indigo-300"
+                                          >
+                                            +10
+                                          </button>
+                                        </div>
+                                      </div>
+                                      <div className="flex flex-wrap gap-1">
+                                        {team.memberIds.map((memberId) => {
+                                          const student = cls.students.find(s => s.id === memberId);
+                                          return (
+                                            <span
+                                              key={memberId}
+                                              className="text-[10px] px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded"
+                                            >
+                                              {student?.name || '???'}
+                                            </span>
+                                          );
+                                        })}
+                                      </div>
                                     </div>
-                                  ) : (
-                                    <div className="text-center py-4">
-                                      <p className="text-xs text-slate-500">
-                                        출전 학생이 아직 선택되지 않았습니다.
-                                      </p>
-                                      <p className="text-[10px] text-slate-400 mt-1">
-                                        종목 선정 탭에서 출전 학생을 선택해주세요.
-                                      </p>
-                                    </div>
-                                  )}
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="text-center py-3">
+                                  <p className="text-xs text-slate-500">
+                                    팀이 구성되지 않았습니다.
+                                  </p>
+                                  <p className="text-[10px] text-slate-400 mt-1">
+                                    종목 선정 탭에서 구성해주세요.
+                                  </p>
                                 </div>
                               )}
                             </div>
                           )}
                         </div>
-                      </td>
-                    );
-                  })}
-                  <td className={`sticky right-0 z-10 ${isEvenRow ? 'bg-white' : 'bg-slate-50'} px-4 py-3 text-center border-l border-slate-200`}>
-                    <div className="flex flex-col items-center">
-                      <span className="text-3xl font-black text-indigo-700">
-                        {totalScore}
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-medium">점</span>
-                    </div>
-                  </td>
-                </tr>
-              </React.Fragment>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
             );
           })}
         </tbody>
