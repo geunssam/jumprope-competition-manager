@@ -3,7 +3,6 @@ import { ClassTeam, CompetitionEvent, GradeConfig, Student, Team } from '../type
 import { Button } from './Button';
 import { Plus, Trash, CheckSquare, Square, Users, Trophy, ClipboardList, Settings2, Medal, UserPlus, ChevronDown, ChevronUp, Check, AlertCircle, X, Copy } from 'lucide-react';
 import { MatrixRecordTable } from './MatrixRecordTable';
-import { ScoreboardSummary } from './ScoreboardSummary';
 import { CompetitionTimer } from './CompetitionTimer';
 import { CreateClassModal } from './CreateClassModal';
 import { MultiClassParticipantModal } from './MultiClassParticipantModal';
@@ -804,12 +803,6 @@ export const GradeView: React.FC<GradeViewProps> = ({
         {/* Scoreboard + Matrix Area - Independent scroll */}
         <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
           <div className="max-w-full mx-auto">
-            {/* Scoreboard Summary */}
-            <ScoreboardSummary
-              classes={gradeClasses}
-              activeEvents={activeEvents}
-            />
-
             <div className="mb-6">
               <h3 className="text-xl font-bold text-slate-900">경기 기록 매트릭스</h3>
               <p className="text-slate-500 mt-1">

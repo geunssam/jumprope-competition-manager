@@ -20,6 +20,16 @@ export const MatrixRecordTable: React.FC<MatrixRecordTableProps> = ({
     new Set(activeEvents.map(e => e.id))
   );
 
+  // 각 학급별 총점 계산
+  const getClassTotalScore = (classTeam: ClassTeam) => {
+    let total = 0;
+    activeEvents.forEach(evt => {
+      const res = classTeam.results[evt.id];
+      if (res) total += res.score;
+    });
+    return total;
+  };
+
   const toggleEventRow = (eventId: string) => {
     setCollapsedEvents(prev => {
       const newSet = new Set(prev);
@@ -107,19 +117,21 @@ export const MatrixRecordTable: React.FC<MatrixRecordTableProps> = ({
       <table className="w-full border-collapse bg-white shadow-sm rounded-lg overflow-hidden">
         {/* Header - 학급명들 */}
         <thead className="sticky top-0 z-20">
-          <tr className="bg-gradient-to-r from-indigo-600 to-indigo-500 text-white">
-            <th className="sticky left-0 z-30 bg-indigo-600 px-4 py-3 text-left text-sm font-bold w-[160px] border-r border-indigo-500">
-              종목
+          <tr className="bg-gradient-to-r from-indigo-600/30 to-indigo-500/30 text-slate-900">
+            <th className="sticky left-0 z-30 bg-indigo-600/30 px-4 py-3 text-left text-sm font-bold w-[160px] border-r border-indigo-500/30">
             </th>
-            {classes.map((cls) => (
-              <th
-                key={cls.id}
-                className="px-4 py-3 text-center text-sm font-bold border-r border-indigo-500 last:border-r-0"
-                style={{ minWidth: '150px', flex: '1 1 0' }}
-              >
-                {cls.name}
-              </th>
-            ))}
+            {classes.map((cls) => {
+              const totalScore = getClassTotalScore(cls);
+              return (
+                <th
+                  key={cls.id}
+                  className="px-4 py-3 text-center border-r border-indigo-500/30 last:border-r-0"
+                  style={{ minWidth: '180px', flex: '1 1 0' }}
+                >
+                  <div className="text-2xl font-black">{cls.name} ({totalScore}점)</div>
+                </th>
+              );
+            })}
           </tr>
         </thead>
 
