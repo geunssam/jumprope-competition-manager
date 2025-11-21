@@ -6,6 +6,24 @@ import { MatrixRecordTable } from './MatrixRecordTable';
 import { CreateClassModal } from './CreateClassModal';
 import { MultiClassParticipantModal } from './MultiClassParticipantModal';
 import { MultiClassTeamCreationModal } from './MultiClassTeamCreationModal';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+  DragStartEvent,
+  DragOverlay,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  horizontalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { SortableEventCard } from './SortableEventCard';
 
 interface GradeViewProps {
   grade: number;
@@ -40,22 +58,48 @@ export const GradeView: React.FC<GradeViewProps> = ({
   const [multiClassParticipantModalEvent, setMultiClassParticipantModalEvent] = useState<CompetitionEvent | null>(null);
   const [multiClassTeamModalEvent, setMultiClassTeamModalEvent] = useState<CompetitionEvent | null>(null);
 
+  // For Drag and Drop
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [selectedEventOrder, setSelectedEventOrder] = useState<string[]>([]);
+
+  // Configure drag sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
   // Filter classes for this grade
-  const gradeClasses = useMemo(() =>
-    classes.filter(c => c.grade === grade),
+  const gradeClasses = useMemo(() => 
+    classes.filter(c => c.grade === grade), 
   [classes, grade]);
 
-  // Combine global events with grade-specific custom events
-  const allGradeEvents = useMemo(() => {
-    const customEvents = gradeConfig?.customEvents || [];
-    return [...events, ...customEvents];
-  }, [events, gradeConfig]);
-
-  // Filter active events for this grade
+  // Filter active events for this grade and apply custom order
   const activeEvents = useMemo(() => {
     if (!gradeConfig || !gradeConfig.events) return [];
-    return allGradeEvents.filter(e => gradeConfig.events[e.id]?.selected);
-  }, [allGradeEvents, gradeConfig]);
+    const selected = events.filter(e => gradeConfig.events[e.id]?.selected);
+
+    // Apply custom order if exists
+    if (selectedEventOrder.length > 0) {
+      const ordered = selectedEventOrder
+        .map(id => selected.find(e => e.id === id))
+        .filter(Boolean) as CompetitionEvent[];
+
+      // Add any new events not in the order
+      const newEvents = selected.filter(e => !selectedEventOrder.includes(e.id));
+      return [...ordered, ...newEvents];
+    }
+
+    return selected;
+  }, [events, gradeConfig, selectedEventOrder]);
+
+  // Initialize order when activeEvents changes
+  useMemo(() => {
+    if (activeEvents.length > 0 && selectedEventOrder.length === 0) {
+      setSelectedEventOrder(activeEvents.map(e => e.id));
+    }
+  }, [activeEvents.length]);
 
   // --- Handlers ---
 
@@ -90,9 +134,9 @@ export const GradeView: React.FC<GradeViewProps> = ({
     // 1. 패턴 추출: "긴줄넘기 2" → "긴줄넘기"
     const namePattern = originalEvent.name.replace(/\s*\d+$/, '').trim();
 
-    // 2. 같은 패턴으로 시작하는 종목들 찾기 (전역 + 커스텀)
+    // 2. 같은 패턴으로 시작하는 종목들 찾기
     const regex = new RegExp(`^${namePattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s+\\d+)?$`);
-    const relatedEvents = allGradeEvents.filter(e => regex.test(e.name));
+    const relatedEvents = events.filter(e => regex.test(e.name));
 
     // 3. 가장 큰 번호 찾기
     let maxNumber = 0;
@@ -116,15 +160,19 @@ export const GradeView: React.FC<GradeViewProps> = ({
       name: newName,
     };
 
-    // 6. gradeConfig의 customEvents에 추가 (전역 events에는 추가하지 않음)
-    const currentCustomEvents = gradeConfig.customEvents || [];
-    const updatedCustomEvents = [...currentCustomEvents, newEvent];
+    // 6. 전체 events 배열에 원본 바로 다음에 삽입
+    const originalIndex = events.findIndex(e => e.id === originalEvent.id);
+    const newEvents = [
+      ...events.slice(0, originalIndex + 1),
+      newEvent,
+      ...events.slice(originalIndex + 1)
+    ];
+    onUpdateEvents(newEvents);
 
     // 7. gradeConfig에 자동 선택 및 참가 인원 설정
     const originalConfig = gradeConfig.events[originalEvent.id] || { selected: false, targetParticipants: 0 };
     onUpdateConfig({
       ...gradeConfig,
-      customEvents: updatedCustomEvents,
       events: {
         ...gradeConfig.events,
         [newEvent.id]: {
@@ -176,7 +224,7 @@ export const GradeView: React.FC<GradeViewProps> = ({
 
   const handleToggleEvent = (eventId: string) => {
     const currentConfig = gradeConfig.events[eventId] || { selected: false, targetParticipants: 0 };
-    const event = allGradeEvents.find(e => e.id === eventId);
+    const event = events.find(e => e.id === eventId);
     const isSelecting = !currentConfig.selected;
 
     // Update config first
@@ -199,6 +247,29 @@ export const GradeView: React.FC<GradeViewProps> = ({
 
     // If selecting, open unified modal for all classes
     if (!event) return;
+  };
+
+  // Drag and Drop Handlers
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as string);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      setSelectedEventOrder((items) => {
+        const oldIndex = items.indexOf(active.id as string);
+        const newIndex = items.indexOf(over.id as string);
+        return arrayMove(items, oldIndex, newIndex);
+      });
+    }
+
+    setActiveId(null);
+  };
+
+  const handleDragCancel = () => {
+    setActiveId(null);
 
     if (gradeClasses.length === 0) {
       alert('먼저 학급을 등록해주세요.');
@@ -476,10 +547,10 @@ export const GradeView: React.FC<GradeViewProps> = ({
   );
 
   const renderEventsTab = () => {
-    // Filter events by type (including custom events for this grade)
-    const individualEvents = allGradeEvents.filter(e => e.type === 'INDIVIDUAL');
-    const pairEvents = allGradeEvents.filter(e => e.type === 'PAIR');
-    const teamEvents = allGradeEvents.filter(e => e.type === 'TEAM');
+    // Filter events by type
+    const individualEvents = events.filter(e => e.type === 'INDIVIDUAL');
+    const pairEvents = events.filter(e => e.type === 'PAIR');
+    const teamEvents = events.filter(e => e.type === 'TEAM');
 
     // Get selected events count by type
     const selectedIndividual = individualEvents.filter(e => gradeConfig.events[e.id]?.selected).length;
@@ -487,7 +558,7 @@ export const GradeView: React.FC<GradeViewProps> = ({
     const selectedTeam = teamEvents.filter(e => gradeConfig.events[e.id]?.selected).length;
 
     // Get all selected events
-    const selectedEvents = allGradeEvents.filter(e => gradeConfig.events[e.id]?.selected);
+    const selectedEvents = events.filter(e => gradeConfig.events[e.id]?.selected);
 
     const eventTabs: { id: EventSubTab; label: string; count: number; total: number }[] = [
       { id: 'INDIVIDUAL', label: '개인', count: selectedIndividual, total: individualEvents.length },
@@ -560,7 +631,7 @@ export const GradeView: React.FC<GradeViewProps> = ({
 
     return (
       <div className="flex flex-col h-full">
-        {/* Selected Events Navigation Bar */}
+        {/* Selected Events Navigation Bar with Drag and Drop */}
         {selectedEvents.length > 0 && (
           <div className="bg-indigo-100/50 text-indigo-900 px-6 py-4 border-b border-indigo-200 shadow-sm">
             <div className="flex items-center justify-between mb-2">
@@ -569,44 +640,35 @@ export const GradeView: React.FC<GradeViewProps> = ({
                 {selectedEvents.length}개 종목
               </span>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {selectedEvents.map(evt => (
-                <div
-                  key={evt.id}
-                  onClick={() => handleOpenEventModal(evt)}
-                  className="inline-flex items-center gap-2 bg-white/50 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-indigo-200 hover:bg-white/70 transition-colors cursor-pointer"
-                  title="클릭하여 출전 인원/팀 구성 수정"
-                >
-                  <span className="text-sm font-medium">{evt.name}</span>
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${
-                    evt.type === 'TEAM' ? 'bg-purple-200 text-purple-800' :
-                    evt.type === 'PAIR' ? 'bg-green-200 text-green-800' :
-                    'bg-blue-200 text-blue-800'
-                  }`}>
-                    {evt.type === 'TEAM' ? '단체' : evt.type === 'PAIR' ? '짝' : '개인'}
-                  </span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleCopyEvent(evt);
-                    }}
-                    className="text-indigo-600/70 hover:text-indigo-700 hover:bg-indigo-200/50 rounded p-0.5 transition-colors"
-                    title="이 종목을 복사합니다 (출전 인원 포함)"
-                  >
-                    <Copy className="w-3 h-3" />
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleToggleEvent(evt.id);
-                    }}
-                    className="text-indigo-600/70 hover:text-indigo-700 hover:bg-indigo-200/50 rounded p-0.5 transition-colors"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+              onDragCancel={handleDragCancel}
+            >
+              <SortableContext items={selectedEventOrder} strategy={horizontalListSortingStrategy}>
+                <div className="flex flex-wrap gap-2">
+                  {selectedEvents.map(evt => (
+                    <SortableEventCard
+                      key={evt.id}
+                      event={evt}
+                      onCopy={handleCopyEvent}
+                      onDelete={handleToggleEvent}
+                    />
+                  ))}
                 </div>
-              ))}
-            </div>
+              </SortableContext>
+              <DragOverlay>
+                {activeId ? (
+                  <div className="inline-flex items-center gap-2 bg-white/70 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-indigo-300 shadow-lg rotate-2 opacity-90">
+                    <span className="text-sm font-bold text-indigo-900">
+                      {selectedEvents.find(e => e.id === activeId)?.name}
+                    </span>
+                  </div>
+                ) : null}
+              </DragOverlay>
+            </DndContext>
           </div>
         )}
 
@@ -703,7 +765,7 @@ export const GradeView: React.FC<GradeViewProps> = ({
               activeEvents={activeEvents}
               onUpdateClasses={onUpdateClasses}
               onEditParticipants={(eventId, classId) => {
-                const event = allGradeEvents.find(e => e.id === eventId);
+                const event = events.find(e => e.id === eventId);
                 if (event && event.type === 'INDIVIDUAL') {
                   setMultiClassParticipantModalEvent(event);
                 } else if (event && (event.type === 'PAIR' || event.type === 'TEAM')) {
