@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { ClassTeam, CompetitionEvent, GradeConfig, Student, Team } from '../types';
 import { Button } from './Button';
-import { Plus, Trash, CheckSquare, Square, Users, Trophy, ClipboardList, Settings2, Medal, UserPlus, ChevronDown, ChevronUp, Check, AlertCircle, X } from 'lucide-react';
+import { Plus, Trash, CheckSquare, Square, Users, Trophy, ClipboardList, Settings2, Medal, UserPlus, ChevronDown, ChevronUp, Check, AlertCircle, X, Copy } from 'lucide-react';
 import { MatrixRecordTable } from './MatrixRecordTable';
 import { CreateClassModal } from './CreateClassModal';
 import { MultiClassParticipantModal } from './MultiClassParticipantModal';
@@ -14,6 +14,7 @@ interface GradeViewProps {
   gradeConfig: GradeConfig;
   onUpdateClasses: (classes: ClassTeam[]) => void;
   onUpdateConfig: (config: GradeConfig) => void;
+  onUpdateEvents: (events: CompetitionEvent[]) => void;
 }
 
 type TabType = 'MANAGEMENT' | 'EVENTS' | 'RECORDS' | 'RESULTS';
@@ -26,6 +27,7 @@ export const GradeView: React.FC<GradeViewProps> = ({
   gradeConfig,
   onUpdateClasses,
   onUpdateConfig,
+  onUpdateEvents,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('MANAGEMENT');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -68,6 +70,106 @@ export const GradeView: React.FC<GradeViewProps> = ({
     if (confirm('해당 학급을 삭제하시겠습니까? 점수 데이터도 함께 삭제됩니다.')) {
       onUpdateClasses(classes.filter(c => c.id !== id));
     }
+  };
+
+  const handleOpenEventModal = (event: CompetitionEvent) => {
+    if (event.type === 'INDIVIDUAL') {
+      setMultiClassParticipantModalEvent(event);
+    } else {
+      setMultiClassTeamModalEvent(event);
+    }
+  };
+
+  const handleCopyEvent = (originalEvent: CompetitionEvent) => {
+    // 1. 패턴 추출: "긴줄넘기 2" → "긴줄넘기"
+    const namePattern = originalEvent.name.replace(/\s*\d+$/, '').trim();
+
+    // 2. 같은 패턴으로 시작하는 종목들 찾기
+    const regex = new RegExp(`^${namePattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s+\\d+)?$`);
+    const relatedEvents = events.filter(e => regex.test(e.name));
+
+    // 3. 가장 큰 번호 찾기
+    let maxNumber = 0;
+    relatedEvents.forEach(e => {
+      const match = e.name.match(/(\d+)$/);
+      if (match) {
+        const num = parseInt(match[1]);
+        if (num > maxNumber) maxNumber = num;
+      }
+    });
+
+    // 4. 새 이름 생성
+    const newName = maxNumber === 0 && relatedEvents.length === 1
+      ? `${namePattern} 2`
+      : `${namePattern} ${maxNumber + 1}`;
+
+    // 5. 새 종목 생성 (고유 ID)
+    const newEvent: CompetitionEvent = {
+      ...originalEvent,
+      id: `evt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      name: newName,
+    };
+
+    // 6. 전체 events 배열에 원본 바로 다음에 삽입
+    const originalIndex = events.findIndex(e => e.id === originalEvent.id);
+    const newEvents = [
+      ...events.slice(0, originalIndex + 1),
+      newEvent,
+      ...events.slice(originalIndex + 1)
+    ];
+    onUpdateEvents(newEvents);
+
+    // 7. gradeConfig에 자동 선택 및 참가 인원 설정
+    const originalConfig = gradeConfig.events[originalEvent.id] || { selected: false, targetParticipants: 0 };
+    onUpdateConfig({
+      ...gradeConfig,
+      events: {
+        ...gradeConfig.events,
+        [newEvent.id]: {
+          selected: true,
+          targetParticipants: originalConfig.targetParticipants
+        }
+      }
+    });
+
+    // 8. 모든 학급의 참가 데이터 복사 (점수는 0으로 리셋)
+    const updatedClasses = classes.map(c => {
+      // 이 학년의 학급만 처리
+      if (c.grade !== grade) return c;
+
+      const originalResult = c.results[originalEvent.id];
+      if (!originalResult) return c;
+
+      // 새 종목에 대한 결과 생성 (점수는 0으로)
+      let newResult: any = { score: 0 };
+
+      if (originalEvent.type === 'INDIVIDUAL') {
+        // 개인 종목: participantIds와 studentScores 구조 복사 (점수는 0으로)
+        newResult.participantIds = originalResult.participantIds || [];
+        newResult.studentScores = {};
+        (originalResult.participantIds || []).forEach((studentId: string) => {
+          newResult.studentScores[studentId] = 0;
+        });
+      } else {
+        // 짝/단체 종목: teams 배열 복사 (점수는 0으로)
+        newResult.teams = (originalResult.teams || []).map((team: Team) => ({
+          ...team,
+          id: `team_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          eventId: newEvent.id,
+          score: 0
+        }));
+      }
+
+      return {
+        ...c,
+        results: {
+          ...c.results,
+          [newEvent.id]: newResult
+        }
+      };
+    });
+
+    onUpdateClasses(updatedClasses);
   };
 
   const handleToggleEvent = (eventId: string) => {
@@ -469,7 +571,9 @@ export const GradeView: React.FC<GradeViewProps> = ({
               {selectedEvents.map(evt => (
                 <div
                   key={evt.id}
-                  className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-white/20 hover:bg-white/20 transition-colors"
+                  onClick={() => handleOpenEventModal(evt)}
+                  className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-white/20 hover:bg-white/20 transition-colors cursor-pointer"
+                  title="클릭하여 출전 인원/팀 구성 수정"
                 >
                   <span className="text-sm font-medium">{evt.name}</span>
                   <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${
@@ -480,7 +584,20 @@ export const GradeView: React.FC<GradeViewProps> = ({
                     {evt.type === 'TEAM' ? '단체' : evt.type === 'PAIR' ? '짝' : '개인'}
                   </span>
                   <button
-                    onClick={() => handleToggleEvent(evt.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleCopyEvent(evt);
+                    }}
+                    className="text-white/70 hover:text-white hover:bg-white/10 rounded p-0.5 transition-colors"
+                    title="이 종목을 복사합니다 (출전 인원 포함)"
+                  >
+                    <Copy className="w-3 h-3" />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleToggleEvent(evt.id);
+                    }}
                     className="text-white/70 hover:text-white hover:bg-white/10 rounded p-0.5 transition-colors"
                   >
                     <X className="w-3 h-3" />

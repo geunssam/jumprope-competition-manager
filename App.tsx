@@ -173,6 +173,7 @@ const App: React.FC = () => {
             gradeConfig={currentGradeConfig}
             onUpdateClasses={setClasses}
             onUpdateConfig={handleUpdateGradeConfig}
+            onUpdateEvents={setEvents}
           />
         )}
       </main>

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { CompetitionEvent, EventType } from '../types';
 import { Button } from './Button';
-import { Plus, Trash2, Edit2, Save, X, Clock, Users } from 'lucide-react';
+import { Plus, Trash2, Edit2, Save, X, Clock, Users, Copy } from 'lucide-react';
 
 interface SettingsViewProps {
   events: CompetitionEvent[];
@@ -54,6 +54,47 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ events, onUpdateEven
   const cancelEdit = () => {
     setIsEditing(null);
     setTempEvent({});
+  };
+
+  const handleCopyEvent = (event: CompetitionEvent) => {
+    // 1. 패턴 추출: "긴줄넘기 2" → "긴줄넘기"
+    const namePattern = event.name.replace(/\s*\d+$/, '').trim();
+
+    // 2. 같은 패턴으로 시작하는 종목들 찾기
+    const regex = new RegExp(`^${namePattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s+\\d+)?$`);
+    const relatedEvents = events.filter(e => regex.test(e.name));
+
+    // 3. 가장 큰 번호 찾기
+    let maxNumber = 0;
+    relatedEvents.forEach(e => {
+      const match = e.name.match(/(\d+)$/);
+      if (match) {
+        const num = parseInt(match[1]);
+        if (num > maxNumber) maxNumber = num;
+      }
+    });
+
+    // 4. 새 이름 생성
+    const newName = maxNumber === 0 && relatedEvents.length === 1
+      ? `${namePattern} 2`  // 원본이 번호 없으면 "2" 추가
+      : `${namePattern} ${maxNumber + 1}`;  // 최대 번호 + 1
+
+    // 5. 새 종목 생성 (고유 ID)
+    const newEvent: CompetitionEvent = {
+      ...event,
+      id: `evt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      name: newName,
+    };
+
+    // 6. 원본 바로 다음에 삽입
+    const originalIndex = events.findIndex(e => e.id === event.id);
+    const newEvents = [
+      ...events.slice(0, originalIndex + 1),
+      newEvent,
+      ...events.slice(originalIndex + 1)
+    ];
+
+    onUpdateEvents(newEvents);
   };
 
   // Filter events by type
@@ -261,6 +302,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ events, onUpdateEven
                       <Button variant="secondary" size="sm" onClick={() => startEdit(event)} className="flex-1">
                         <Edit2 className="w-3 h-3 mr-1" />
                         <span className="text-xs">수정</span>
+                      </Button>
+                      <Button variant="secondary" size="sm" onClick={() => handleCopyEvent(event)} title="이 종목을 복사합니다">
+                        <Copy className="w-3 h-3" />
                       </Button>
                       <Button variant="danger" size="sm" onClick={() => handleDeleteEvent(event.id)}>
                         <Trash2 className="w-3 h-3" />
