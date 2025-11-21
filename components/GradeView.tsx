@@ -4,6 +4,7 @@ import { Button } from './Button';
 import { Plus, Trash, CheckSquare, Square, Users, Trophy, ClipboardList, Settings2, Medal, UserPlus, ChevronDown, ChevronUp, Check, AlertCircle, X, Copy } from 'lucide-react';
 import { MatrixRecordTable } from './MatrixRecordTable';
 import { ScoreboardSummary } from './ScoreboardSummary';
+import { CompetitionTimer } from './CompetitionTimer';
 import { CreateClassModal } from './CreateClassModal';
 import { MultiClassParticipantModal } from './MultiClassParticipantModal';
 import { MultiClassTeamCreationModal } from './MultiClassTeamCreationModal';
@@ -795,8 +796,13 @@ export const GradeView: React.FC<GradeViewProps> = ({
 
     return (
       <div className="flex flex-col h-full">
-        {/* Matrix Record Table */}
-        <div className="flex-1 overflow-auto p-6 bg-slate-50">
+        {/* Timer Area - Fixed at top */}
+        <div className="flex-shrink-0 p-6 bg-slate-50 border-b border-slate-200">
+          <CompetitionTimer />
+        </div>
+
+        {/* Scoreboard + Matrix Area - Independent scroll */}
+        <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
           <div className="max-w-full mx-auto">
             {/* Scoreboard Summary */}
             <ScoreboardSummary
