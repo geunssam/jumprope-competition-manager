@@ -4,117 +4,139 @@ import { SettingsView } from './components/SettingsView';
 import { GradeView } from './components/GradeView';
 import { LoginPage } from './components/LoginPage';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import {
+  subscribeToEvents,
+  subscribeToGradeClasses,
+  getMyCompetitions,
+  createCompetition,
+  getGradeConfig,
+  updateGradeConfig,
+  batchUpdateClasses,
+  batchUpdateEvents
+} from './services/firestore';
+import {
+  migrateLocalStorageToFirestore,
+  hasLocalStorageData,
+  hasMigratedData
+} from './utils/migration';
 import { CompetitionEvent, ClassTeam, GradeConfig, ViewMode } from './types';
 import { INITIAL_EVENTS } from './constants';
+import { writeBatch, doc } from 'firebase/firestore';
+import { db } from './lib/firebase';
 
 const AppContent: React.FC = () => {
   const { user, loading: authLoading } = useAuth();
-  // --- Data Migration Logic ---
-  const DATA_VERSION = '2.1'; // Increment this when data structure changes
 
-  useEffect(() => {
-    const currentVersion = localStorage.getItem('jr_data_version');
+  // 대회 상태
+  const [currentCompetitionId, setCurrentCompetitionId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-    if (currentVersion !== DATA_VERSION) {
-      console.log('🔄 Migrating data to version', DATA_VERSION);
-
-      if (currentVersion === '2.0') {
-        // Migrate from 2.0 to 2.1: Convert teamParticipantIds to teams array
-        const savedClasses = localStorage.getItem('jr_classes');
-        if (savedClasses) {
-          const classes = JSON.parse(savedClasses);
-          const migratedClasses = classes.map((cls: any) => {
-            const newResults: any = {};
-            Object.keys(cls.results || {}).forEach((eventId: string) => {
-              const result = cls.results[eventId];
-              if (result.teamParticipantIds && result.teamParticipantIds.length > 0) {
-                // Migrate old teamParticipantIds to new teams array
-                newResults[eventId] = {
-                  score: result.score,
-                  teams: [{
-                    id: `team_migration_${cls.id}_${eventId}`,
-                    classId: cls.id,
-                    eventId: eventId,
-                    name: `${cls.name} 팀`,
-                    memberIds: result.teamParticipantIds,
-                    score: result.score
-                  }]
-                };
-              } else {
-                newResults[eventId] = result;
-              }
-            });
-            return { ...cls, results: newResults };
-          });
-          localStorage.setItem('jr_classes', JSON.stringify(migratedClasses));
-        }
-      } else {
-        // For versions older than 2.0, clear all data
-        localStorage.removeItem('jr_events');
-        localStorage.removeItem('jr_classes');
-        localStorage.removeItem('jr_grade_configs');
-        localStorage.removeItem('jr_grade_configs_v2');
-      }
-
-      // Set new version
-      localStorage.setItem('jr_data_version', DATA_VERSION);
-
-      // Force reload to initialize with fresh data
-      window.location.reload();
-    }
-  }, []);
-
-  // --- State Management ---
-  const [events, setEvents] = useState<CompetitionEvent[]>(() => {
-    const saved = localStorage.getItem('jr_events');
-    return saved ? JSON.parse(saved) : INITIAL_EVENTS;
-  });
-
-  const [classes, setClasses] = useState<ClassTeam[]>(() => {
-    const saved = localStorage.getItem('jr_classes');
-    // Basic migration for old data format if needed: check if 'students' exists
-    const parsed = saved ? JSON.parse(saved) : [];
-    if (parsed.length > 0 && !parsed[0].students) {
-      // Migrate old simple count to student objects
-      return parsed.map((c: any) => ({
-        ...c,
-        students: Array.from({ length: c.studentCount || 0 }, (_, i) => ({
-          id: `std_mig_${c.id}_${i}`,
-          name: `학생 ${i + 1}`
-        }))
-      }));
-    }
-    return parsed;
-  });
-
-  const [gradeConfigs, setGradeConfigs] = useState<GradeConfig[]>(() => {
-    const saved = localStorage.getItem('jr_grade_configs_v2'); // Versioned key for new config structure
-    if (saved) return JSON.parse(saved);
-    
-    // Initialize for grades 1-6
-    return Array.from({ length: 6 }, (_, i) => ({
-      grade: i + 1,
-      events: {} // New structure
-    }));
-  });
+  // 데이터 상태
+  const [events, setEvents] = useState<CompetitionEvent[]>([]);
+  const [classes, setClasses] = useState<ClassTeam[]>([]);
+  const [gradeConfigs, setGradeConfigs] = useState<GradeConfig[]>([]);
 
   // UI State
   const [currentView, setCurrentView] = useState<ViewMode>(ViewMode.GRADE);
   const [currentGrade, setCurrentGrade] = useState<number>(1);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
 
-  // --- Persistence Effects ---
+  // 1. 대회 초기화
   useEffect(() => {
-    localStorage.setItem('jr_events', JSON.stringify(events));
-  }, [events]);
+    if (!user) return;
 
-  useEffect(() => {
-    localStorage.setItem('jr_classes', JSON.stringify(classes));
-  }, [classes]);
+    const initCompetition = async () => {
+      try {
+        setLoading(true);
 
+        // 마이그레이션 확인
+        if (!hasMigratedData() && hasLocalStorageData()) {
+          if (confirm('기존 데이터를 클라우드로 이전하시겠습니까?')) {
+            const compId = await migrateLocalStorageToFirestore(user.uid);
+            setCurrentCompetitionId(compId);
+            setLoading(false);
+            return;
+          }
+        }
+
+        // 기존 대회 조회
+        const savedCompId = localStorage.getItem('jr_competition_id');
+        if (savedCompId) {
+          setCurrentCompetitionId(savedCompId);
+        } else {
+          const comps = await getMyCompetitions(user.uid);
+          if (comps.length > 0) {
+            setCurrentCompetitionId(comps[0].id);
+            localStorage.setItem('jr_competition_id', comps[0].id);
+          } else {
+            // 새 대회 생성 및 초기 종목 추가
+            const newCompId = await createCompetition(user.uid, '줄넘기 대회');
+
+            // 초기 종목 추가
+            const batch = writeBatch(db);
+            INITIAL_EVENTS.forEach(event => {
+              const eventRef = doc(db, 'events', event.id);
+              batch.set(eventRef, { ...event, competitionId: newCompId });
+            });
+            await batch.commit();
+
+            setCurrentCompetitionId(newCompId);
+            localStorage.setItem('jr_competition_id', newCompId);
+          }
+        }
+      } catch (err) {
+        console.error('Competition init error:', err);
+        setError('대회 초기화 중 오류가 발생했습니다.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initCompetition();
+  }, [user]);
+
+  // 2. 종목 실시간 구독
   useEffect(() => {
-    localStorage.setItem('jr_grade_configs_v2', JSON.stringify(gradeConfigs));
-  }, [gradeConfigs]);
+    if (!currentCompetitionId) return;
+
+    const unsubscribe = subscribeToEvents(currentCompetitionId, (updatedEvents) => {
+      setEvents(updatedEvents);
+    });
+
+    return () => unsubscribe();
+  }, [currentCompetitionId]);
+
+  // 3. 학급 실시간 구독 (학년별)
+  useEffect(() => {
+    if (!currentCompetitionId || currentView !== ViewMode.GRADE) return;
+
+    const unsubscribe = subscribeToGradeClasses(
+      currentCompetitionId,
+      currentGrade,
+      (updatedClasses) => {
+        setClasses(updatedClasses);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [currentCompetitionId, currentGrade, currentView]);
+
+  // 4. 학년 설정 로드
+  useEffect(() => {
+    if (!currentCompetitionId) return;
+
+    const loadConfigs = async () => {
+      const configs: GradeConfig[] = [];
+      for (let grade = 1; grade <= 6; grade++) {
+        const config = await getGradeConfig(currentCompetitionId, grade);
+        configs.push(config || { grade, events: {} });
+      }
+      setGradeConfigs(configs);
+    };
+
+    loadConfigs();
+  }, [currentCompetitionId]);
 
   // --- Handlers ---
   const handleSelectGrade = (grade: number) => {
@@ -126,23 +148,28 @@ const AppContent: React.FC = () => {
     setCurrentView(ViewMode.SETTINGS);
   };
 
-  const handleUpdateGradeConfig = (newConfig: GradeConfig) => {
+  const handleUpdateGradeConfig = async (newConfig: GradeConfig) => {
+    if (!currentCompetitionId) return;
+    await updateGradeConfig(currentCompetitionId, newConfig);
     setGradeConfigs(prev => prev.map(c => c.grade === newConfig.grade ? newConfig : c));
+  };
+
+  const handleUpdateClasses = async (updatedClasses: ClassTeam[]) => {
+    await batchUpdateClasses(updatedClasses);
+    // 실시간 리스너가 자동으로 업데이트
+  };
+
+  const handleUpdateEvents = async (updatedEvents: CompetitionEvent[]) => {
+    if (!currentCompetitionId) return;
+    await batchUpdateEvents(currentCompetitionId, updatedEvents);
+    // 실시간 리스너가 자동으로 업데이트
   };
 
   // Get config for current grade
   const currentGradeConfig = gradeConfigs.find(c => c.grade === currentGrade) || { grade: currentGrade, events: {} };
 
-  const handleMigration = () => {
-    if (confirm('⚠️ 모든 데이터가 초기화됩니다. 계속하시겠습니까?')) {
-      console.log('🔄 Manual migration triggered');
-      localStorage.clear();
-      window.location.reload();
-    }
-  };
-
   // 로딩 화면
-  if (authLoading) {
+  if (authLoading || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="text-center">
@@ -158,6 +185,23 @@ const AppContent: React.FC = () => {
     return <LoginPage />;
   }
 
+  // 에러 화면
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="text-center">
+          <p className="text-red-600">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg"
+          >
+            새로고침
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
       <Sidebar
@@ -170,22 +214,10 @@ const AppContent: React.FC = () => {
       />
 
       <main className="flex-1 flex flex-col overflow-hidden relative">
-        {/* Migration Button - Top Right */}
-        <button
-          onClick={handleMigration}
-          className="absolute top-4 right-4 z-50 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-bold flex items-center gap-2 transition-all hover:scale-105"
-          title="데이터 초기화 및 마이그레이션"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
-          데이터 초기화
-        </button>
-
         {currentView === ViewMode.SETTINGS ? (
           <SettingsView
             events={events}
-            onUpdateEvents={setEvents}
+            onUpdateEvents={handleUpdateEvents}
           />
         ) : (
           <GradeView
@@ -194,9 +226,9 @@ const AppContent: React.FC = () => {
             classes={classes}
             events={events}
             gradeConfig={currentGradeConfig}
-            onUpdateClasses={setClasses}
+            onUpdateClasses={handleUpdateClasses}
             onUpdateConfig={handleUpdateGradeConfig}
-            onUpdateEvents={setEvents}
+            onUpdateEvents={handleUpdateEvents}
           />
         )}
       </main>
