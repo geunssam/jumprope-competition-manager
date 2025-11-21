@@ -71,23 +71,23 @@ export const INITIAL_EVENTS: CompetitionEvent[] = [
   {
     id: 'evt_9',
     name: '번갈아 짝줄넘기',
-    type: 'TEAM',
+    type: 'PAIR',
     defaultTimeLimit: 30,
     defaultMaxParticipants: 2,
     description: '30초 동안 번갈아 짝줄넘기 (2명 1조)'
   },
   {
     id: 'evt_10',
-    name: '함께 짝줄넘기',
-    type: 'TEAM',
+    name: '나란히 짝줄넘기',
+    type: 'PAIR',
     defaultTimeLimit: 30,
     defaultMaxParticipants: 2,
-    description: '30초 동안 함께 짝줄넘기 (2명 1조)'
+    description: '30초 동안 나란히 짝줄넘기 (2명 1조)'
   },
   {
     id: 'evt_11',
     name: '마주보고 짝줄넘기',
-    type: 'TEAM',
+    type: 'PAIR',
     defaultTimeLimit: 30,
     defaultMaxParticipants: 2,
     description: '30초 동안 마주보고 짝줄넘기 (2명 1조)'

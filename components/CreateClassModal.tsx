@@ -77,80 +77,79 @@ export const CreateClassModal: React.FC<CreateClassModalProps> = ({
         </div>
 
         {/* Content */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6">
-          <div className="space-y-6">
-            {/* Class Name Input */}
-            <div>
-              <label className="block text-sm font-bold text-slate-900 mb-2">
-                학급명 <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={className}
-                onChange={(e) => setClassName(e.target.value)}
-                placeholder="예: 1반"
-                className="w-full px-4 py-3 border-2 border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-lg"
-                autoFocus
-              />
-              <p className="text-xs text-slate-500 mt-1">
-                학급 이름을 입력하세요 (예: 1반, 2반, 가반, 나반 등)
-              </p>
-            </div>
-
-            {/* Student Names Input */}
-            <div>
-              <label className="block text-sm font-bold text-slate-900 mb-2">
-                학생 명단 <span className="text-red-500">*</span>
-              </label>
-              <textarea
-                value={studentNames}
-                onChange={(e) => setStudentNames(e.target.value)}
-                placeholder="김철수&#10;이영희&#10;박민수&#10;최지우"
-                className="w-full px-4 py-3 border-2 border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none h-64 resize-none leading-relaxed text-base"
-              />
-              <p className="text-xs text-slate-500 mt-1">
-                <Users className="w-3 h-3 inline mr-1" />
-                학생 이름을 <strong>줄바꿈(엔터)</strong> 또는 쉼표(,)로 구분하여 입력하세요.
-              </p>
-            </div>
-
-            {/* Preview */}
-            {studentNames.trim() && (
-              <div className="bg-indigo-50 rounded-xl p-4 border-2 border-indigo-100">
-                <h4 className="text-xs font-bold text-indigo-900 mb-3 uppercase tracking-wider">
-                  입력된 학생 미리보기
-                </h4>
-                <div className="flex flex-wrap gap-2">
-                  {studentNames
-                    .split(/[,\n]/)
-                    .map(s => s.trim())
-                    .filter(s => s.length > 0)
-                    .map((name, idx) => (
-                      <span
-                        key={idx}
-                        className="inline-flex items-center px-3 py-1.5 rounded-lg text-sm bg-white text-slate-700 border border-indigo-200 font-medium"
-                      >
-                        {name}
-                      </span>
-                    ))}
-                </div>
-                <p className="text-xs text-indigo-600 font-medium mt-3">
-                  총 {studentNames.split(/[,\n]/).filter(s => s.trim().length > 0).length}명
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto flex flex-col">
+          <div className="flex-1 p-6">
+            <div className="space-y-6">
+              {/* Class Name Input */}
+              <div>
+                <label className="block text-sm font-bold text-slate-900 mb-2">
+                  학급명 <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={className}
+                  onChange={(e) => setClassName(e.target.value)}
+                  placeholder="예: 1반"
+                  className="w-full px-4 py-3 border-2 border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-lg"
+                  autoFocus
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  학급 이름을 입력하세요 (예: 1반, 2반, 가반, 나반 등)
                 </p>
               </div>
-            )}
+
+              {/* Student Names Input */}
+              <div>
+                <label className="block text-sm font-bold text-slate-900 mb-2">
+                  학생 명단 <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={studentNames}
+                  onChange={(e) => setStudentNames(e.target.value)}
+                  placeholder="김철수&#10;이영희&#10;박민수&#10;최지우"
+                  className="w-full px-4 py-3 border-2 border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none h-64 resize-none leading-relaxed text-base"
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  <Users className="w-3 h-3 inline mr-1" />
+                  학생 이름을 <strong>줄바꿈(엔터)</strong> 또는 쉼표(,)로 구분하여 입력하세요.
+                </p>
+              </div>
+
+              {/* Preview */}
+              {studentNames.trim() && (
+                <div className="bg-indigo-50 rounded-xl p-3 border-2 border-indigo-100">
+                  <h4 className="text-xs font-bold text-indigo-900 mb-2 uppercase tracking-wider">
+                    입력된 학생 미리보기 ({studentNames.split(/[,\n]/).filter(s => s.trim().length > 0).length}명)
+                  </h4>
+                  <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+                    {studentNames
+                      .split(/[,\n]/)
+                      .map(s => s.trim())
+                      .filter(s => s.length > 0)
+                      .map((name, idx) => (
+                        <span
+                          key={idx}
+                          className="inline-flex items-center px-2.5 py-1 rounded-md text-xs bg-white text-slate-700 border border-indigo-200 font-medium"
+                        >
+                          {name}
+                        </span>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="border-t border-slate-200 px-6 py-4 flex justify-end gap-3 bg-slate-50">
+            <Button variant="secondary" onClick={onClose} type="button">
+              취소
+            </Button>
+            <Button type="submit">
+              학급 생성
+            </Button>
           </div>
         </form>
-
-        {/* Footer */}
-        <div className="border-t border-slate-200 px-6 py-4 flex justify-end gap-3 bg-slate-50">
-          <Button variant="secondary" onClick={onClose} type="button">
-            취소
-          </Button>
-          <Button onClick={handleSubmit} type="submit">
-            학급 생성
-          </Button>
-        </div>
       </div>
     </div>
   );
