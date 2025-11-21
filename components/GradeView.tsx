@@ -41,15 +41,21 @@ export const GradeView: React.FC<GradeViewProps> = ({
   const [multiClassTeamModalEvent, setMultiClassTeamModalEvent] = useState<CompetitionEvent | null>(null);
 
   // Filter classes for this grade
-  const gradeClasses = useMemo(() => 
-    classes.filter(c => c.grade === grade), 
+  const gradeClasses = useMemo(() =>
+    classes.filter(c => c.grade === grade),
   [classes, grade]);
+
+  // Combine global events with grade-specific custom events
+  const allGradeEvents = useMemo(() => {
+    const customEvents = gradeConfig?.customEvents || [];
+    return [...events, ...customEvents];
+  }, [events, gradeConfig]);
 
   // Filter active events for this grade
   const activeEvents = useMemo(() => {
     if (!gradeConfig || !gradeConfig.events) return [];
-    return events.filter(e => gradeConfig.events[e.id]?.selected);
-  }, [events, gradeConfig]);
+    return allGradeEvents.filter(e => gradeConfig.events[e.id]?.selected);
+  }, [allGradeEvents, gradeConfig]);
 
   // --- Handlers ---
 
@@ -84,9 +90,9 @@ export const GradeView: React.FC<GradeViewProps> = ({
     // 1. 패턴 추출: "긴줄넘기 2" → "긴줄넘기"
     const namePattern = originalEvent.name.replace(/\s*\d+$/, '').trim();
 
-    // 2. 같은 패턴으로 시작하는 종목들 찾기
+    // 2. 같은 패턴으로 시작하는 종목들 찾기 (전역 + 커스텀)
     const regex = new RegExp(`^${namePattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s+\\d+)?$`);
-    const relatedEvents = events.filter(e => regex.test(e.name));
+    const relatedEvents = allGradeEvents.filter(e => regex.test(e.name));
 
     // 3. 가장 큰 번호 찾기
     let maxNumber = 0;
@@ -110,19 +116,15 @@ export const GradeView: React.FC<GradeViewProps> = ({
       name: newName,
     };
 
-    // 6. 전체 events 배열에 원본 바로 다음에 삽입
-    const originalIndex = events.findIndex(e => e.id === originalEvent.id);
-    const newEvents = [
-      ...events.slice(0, originalIndex + 1),
-      newEvent,
-      ...events.slice(originalIndex + 1)
-    ];
-    onUpdateEvents(newEvents);
+    // 6. gradeConfig의 customEvents에 추가 (전역 events에는 추가하지 않음)
+    const currentCustomEvents = gradeConfig.customEvents || [];
+    const updatedCustomEvents = [...currentCustomEvents, newEvent];
 
     // 7. gradeConfig에 자동 선택 및 참가 인원 설정
     const originalConfig = gradeConfig.events[originalEvent.id] || { selected: false, targetParticipants: 0 };
     onUpdateConfig({
       ...gradeConfig,
+      customEvents: updatedCustomEvents,
       events: {
         ...gradeConfig.events,
         [newEvent.id]: {
@@ -174,7 +176,7 @@ export const GradeView: React.FC<GradeViewProps> = ({
 
   const handleToggleEvent = (eventId: string) => {
     const currentConfig = gradeConfig.events[eventId] || { selected: false, targetParticipants: 0 };
-    const event = events.find(e => e.id === eventId);
+    const event = allGradeEvents.find(e => e.id === eventId);
     const isSelecting = !currentConfig.selected;
 
     // Update config first
@@ -474,10 +476,10 @@ export const GradeView: React.FC<GradeViewProps> = ({
   );
 
   const renderEventsTab = () => {
-    // Filter events by type
-    const individualEvents = events.filter(e => e.type === 'INDIVIDUAL');
-    const pairEvents = events.filter(e => e.type === 'PAIR');
-    const teamEvents = events.filter(e => e.type === 'TEAM');
+    // Filter events by type (including custom events for this grade)
+    const individualEvents = allGradeEvents.filter(e => e.type === 'INDIVIDUAL');
+    const pairEvents = allGradeEvents.filter(e => e.type === 'PAIR');
+    const teamEvents = allGradeEvents.filter(e => e.type === 'TEAM');
 
     // Get selected events count by type
     const selectedIndividual = individualEvents.filter(e => gradeConfig.events[e.id]?.selected).length;
@@ -485,7 +487,7 @@ export const GradeView: React.FC<GradeViewProps> = ({
     const selectedTeam = teamEvents.filter(e => gradeConfig.events[e.id]?.selected).length;
 
     // Get all selected events
-    const selectedEvents = events.filter(e => gradeConfig.events[e.id]?.selected);
+    const selectedEvents = allGradeEvents.filter(e => gradeConfig.events[e.id]?.selected);
 
     const eventTabs: { id: EventSubTab; label: string; count: number; total: number }[] = [
       { id: 'INDIVIDUAL', label: '개인', count: selectedIndividual, total: individualEvents.length },
@@ -560,10 +562,10 @@ export const GradeView: React.FC<GradeViewProps> = ({
       <div className="flex flex-col h-full">
         {/* Selected Events Navigation Bar */}
         {selectedEvents.length > 0 && (
-          <div className="bg-gradient-to-r from-indigo-600 to-indigo-500 text-white px-6 py-4 border-b border-indigo-400 shadow-md">
+          <div className="bg-indigo-100/50 text-indigo-900 px-6 py-4 border-b border-indigo-200 shadow-sm">
             <div className="flex items-center justify-between mb-2">
               <h4 className="text-sm font-bold uppercase tracking-wider">선택된 종목</h4>
-              <span className="text-xs bg-white/20 px-3 py-1 rounded-full font-bold">
+              <span className="text-xs bg-indigo-200/60 px-3 py-1 rounded-full font-bold">
                 {selectedEvents.length}개 종목
               </span>
             </div>
@@ -572,14 +574,14 @@ export const GradeView: React.FC<GradeViewProps> = ({
                 <div
                   key={evt.id}
                   onClick={() => handleOpenEventModal(evt)}
-                  className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-white/20 hover:bg-white/20 transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-2 bg-white/50 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-indigo-200 hover:bg-white/70 transition-colors cursor-pointer"
                   title="클릭하여 출전 인원/팀 구성 수정"
                 >
                   <span className="text-sm font-medium">{evt.name}</span>
                   <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${
-                    evt.type === 'TEAM' ? 'bg-purple-400/50 text-purple-50' :
-                    evt.type === 'PAIR' ? 'bg-green-400/50 text-green-50' :
-                    'bg-blue-400/50 text-blue-50'
+                    evt.type === 'TEAM' ? 'bg-purple-200 text-purple-800' :
+                    evt.type === 'PAIR' ? 'bg-green-200 text-green-800' :
+                    'bg-blue-200 text-blue-800'
                   }`}>
                     {evt.type === 'TEAM' ? '단체' : evt.type === 'PAIR' ? '짝' : '개인'}
                   </span>
@@ -588,7 +590,7 @@ export const GradeView: React.FC<GradeViewProps> = ({
                       e.stopPropagation();
                       handleCopyEvent(evt);
                     }}
-                    className="text-white/70 hover:text-white hover:bg-white/10 rounded p-0.5 transition-colors"
+                    className="text-indigo-600/70 hover:text-indigo-700 hover:bg-indigo-200/50 rounded p-0.5 transition-colors"
                     title="이 종목을 복사합니다 (출전 인원 포함)"
                   >
                     <Copy className="w-3 h-3" />
@@ -598,7 +600,7 @@ export const GradeView: React.FC<GradeViewProps> = ({
                       e.stopPropagation();
                       handleToggleEvent(evt.id);
                     }}
-                    className="text-white/70 hover:text-white hover:bg-white/10 rounded p-0.5 transition-colors"
+                    className="text-indigo-600/70 hover:text-indigo-700 hover:bg-indigo-200/50 rounded p-0.5 transition-colors"
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -701,7 +703,7 @@ export const GradeView: React.FC<GradeViewProps> = ({
               activeEvents={activeEvents}
               onUpdateClasses={onUpdateClasses}
               onEditParticipants={(eventId, classId) => {
-                const event = events.find(e => e.id === eventId);
+                const event = allGradeEvents.find(e => e.id === eventId);
                 if (event && event.type === 'INDIVIDUAL') {
                   setMultiClassParticipantModalEvent(event);
                 } else if (event && (event.type === 'PAIR' || event.type === 'TEAM')) {

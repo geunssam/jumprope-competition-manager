@@ -54,6 +54,8 @@ export interface GradeConfig {
     selected: boolean;
     targetParticipants: number; // e.g., 6 people for Figure 8
   }>;
+  // Custom events created by copying (only visible in this grade)
+  customEvents?: CompetitionEvent[];
 }
 
 export enum ViewMode {
