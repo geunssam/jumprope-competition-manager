@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { ClassTeam, CompetitionEvent, GradeConfig, Student, Team } from '../types';
 import { Button } from './Button';
 import { Plus, Trash, CheckSquare, Square, Users, Trophy, ClipboardList, Settings2, Medal, UserPlus, ChevronDown, ChevronUp, Check, AlertCircle, X, Copy } from 'lucide-react';
@@ -75,31 +75,55 @@ export const GradeView: React.FC<GradeViewProps> = ({
     classes.filter(c => c.grade === grade), 
   [classes, grade]);
 
-  // Filter active events for this grade and apply custom order
-  const activeEvents = useMemo(() => {
+  // Get base selected events (without custom ordering)
+  const baseSelectedEvents = useMemo(() => {
     if (!gradeConfig || !gradeConfig.events) return [];
-    const selected = events.filter(e => gradeConfig.events[e.id]?.selected);
+    return events.filter(e => gradeConfig.events[e.id]?.selected);
+  }, [events, gradeConfig]);
 
-    // Apply custom order if exists
-    if (selectedEventOrder.length > 0) {
-      const ordered = selectedEventOrder
-        .map(id => selected.find(e => e.id === id))
-        .filter(Boolean) as CompetitionEvent[];
+  // Initialize order when base events change (but don't override user's drag order)
+  useEffect(() => {
+    const currentIds = baseSelectedEvents.map(e => e.id);
+    const currentIdsKey = currentIds.join(',');
+    console.log('baseSelectedEvents changed:', currentIds);
 
-      // Add any new events not in the order
-      const newEvents = selected.filter(e => !selectedEventOrder.includes(e.id));
-      return [...ordered, ...newEvents];
+    // Only initialize if order is empty
+    if (selectedEventOrder.length === 0 && currentIds.length > 0) {
+      console.log('Initializing order:', currentIds);
+      setSelectedEventOrder(currentIds);
+    } else if (currentIds.length > 0 && selectedEventOrder.length > 0) {
+      // Add new events to the end, remove deleted ones
+      const newEvents = currentIds.filter(id => !selectedEventOrder.includes(id));
+      if (newEvents.length > 0) {
+        console.log('Adding new events:', newEvents);
+        setSelectedEventOrder(prev => [...prev, ...newEvents]);
+      }
+
+      // Remove events that are no longer selected
+      const stillExists = selectedEventOrder.filter(id => currentIds.includes(id));
+      if (stillExists.length !== selectedEventOrder.length) {
+        console.log('Removing deleted events');
+        setSelectedEventOrder(stillExists);
+      }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseSelectedEvents.length]);
 
-    return selected;
-  }, [events, gradeConfig, selectedEventOrder]);
+  // Apply custom order to selected events
+  const activeEvents = useMemo(() => {
+    if (selectedEventOrder.length === 0) return baseSelectedEvents;
 
-  // Initialize order when activeEvents changes
-  useMemo(() => {
-    if (activeEvents.length > 0 && selectedEventOrder.length === 0) {
-      setSelectedEventOrder(activeEvents.map(e => e.id));
-    }
-  }, [activeEvents.length]);
+    const ordered = selectedEventOrder
+      .map(id => baseSelectedEvents.find(e => e.id === id))
+      .filter(Boolean) as CompetitionEvent[];
+
+    console.log('🔄 activeEvents updated:', {
+      selectedEventOrder: JSON.stringify(selectedEventOrder),
+      orderedIds: JSON.stringify(ordered.map(e => e.id))
+    });
+
+    return ordered;
+  }, [baseSelectedEvents, selectedEventOrder]);
 
   // --- Handlers ---
 
@@ -251,24 +275,43 @@ export const GradeView: React.FC<GradeViewProps> = ({
 
   // Drag and Drop Handlers
   const handleDragStart = (event: DragStartEvent) => {
+    console.log('Drag started:', event.active.id);
     setActiveId(event.active.id as string);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-
-    if (over && active.id !== over.id) {
-      setSelectedEventOrder((items) => {
-        const oldIndex = items.indexOf(active.id as string);
-        const newIndex = items.indexOf(over.id as string);
-        return arrayMove(items, oldIndex, newIndex);
-      });
-    }
+    console.log('🎯 Drag ended:', {
+      active: active.id,
+      over: over?.id,
+      currentOrder: JSON.stringify(selectedEventOrder)
+    });
 
     setActiveId(null);
+
+    if (!over || active.id === over.id) {
+      console.log('❌ No change needed');
+      return;
+    }
+
+    const oldIndex = selectedEventOrder.indexOf(active.id as string);
+    const newIndex = selectedEventOrder.indexOf(over.id as string);
+    console.log('📍 Indices:', { oldIndex, newIndex, from: active.id, to: over.id });
+
+    if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
+      const newOrder = arrayMove([...selectedEventOrder], oldIndex, newIndex);
+      console.log('✅ Setting new order:', {
+        old: JSON.stringify(selectedEventOrder),
+        new: JSON.stringify(newOrder)
+      });
+      setSelectedEventOrder(newOrder);
+    } else {
+      console.log('⚠️ Invalid indices or no change');
+    }
   };
 
   const handleDragCancel = () => {
+    console.log('Drag cancelled');
     setActiveId(null);
 
     if (gradeClasses.length === 0) {
@@ -632,12 +675,12 @@ export const GradeView: React.FC<GradeViewProps> = ({
     return (
       <div className="flex flex-col h-full">
         {/* Selected Events Navigation Bar with Drag and Drop */}
-        {selectedEvents.length > 0 && (
+        {activeEvents.length > 0 && (
           <div className="bg-indigo-100/50 text-indigo-900 px-6 py-4 border-b border-indigo-200 shadow-sm">
             <div className="flex items-center justify-between mb-2">
               <h4 className="text-sm font-bold uppercase tracking-wider">선택된 종목</h4>
               <span className="text-xs bg-indigo-200/60 px-3 py-1 rounded-full font-bold">
-                {selectedEvents.length}개 종목
+                {activeEvents.length}개 종목
               </span>
             </div>
             <DndContext
@@ -649,12 +692,13 @@ export const GradeView: React.FC<GradeViewProps> = ({
             >
               <SortableContext items={selectedEventOrder} strategy={horizontalListSortingStrategy}>
                 <div className="flex flex-wrap gap-2">
-                  {selectedEvents.map(evt => (
+                  {activeEvents.map(evt => (
                     <SortableEventCard
                       key={evt.id}
                       event={evt}
                       onCopy={handleCopyEvent}
                       onDelete={handleToggleEvent}
+                      onClick={handleOpenEventModal}
                     />
                   ))}
                 </div>
@@ -663,7 +707,7 @@ export const GradeView: React.FC<GradeViewProps> = ({
                 {activeId ? (
                   <div className="inline-flex items-center gap-2 bg-white/70 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-indigo-300 shadow-lg rotate-2 opacity-90">
                     <span className="text-sm font-bold text-indigo-900">
-                      {selectedEvents.find(e => e.id === activeId)?.name}
+                      {activeEvents.find(e => e.id === activeId)?.name}
                     </span>
                   </div>
                 ) : null}

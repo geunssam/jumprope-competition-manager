@@ -8,12 +8,14 @@ interface SortableEventCardProps {
   event: CompetitionEvent;
   onCopy: (event: CompetitionEvent) => void;
   onDelete: (eventId: string) => void;
+  onClick?: (event: CompetitionEvent) => void;
 }
 
 export const SortableEventCard: React.FC<SortableEventCardProps> = ({
   event,
   onCopy,
   onDelete,
+  onClick,
 }) => {
   const {
     attributes,
@@ -34,9 +36,11 @@ export const SortableEventCard: React.FC<SortableEventCardProps> = ({
     <div
       ref={setNodeRef}
       style={style}
-      className={`inline-flex items-center gap-2 bg-white/50 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-indigo-200 hover:bg-white/70 transition-colors ${
+      onClick={() => onClick?.(event)}
+      className={`inline-flex items-center gap-2 bg-white/50 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-indigo-200 hover:bg-white/70 transition-colors cursor-pointer ${
         isDragging ? 'ring-2 ring-indigo-500 shadow-lg' : ''
       }`}
+      title="클릭하여 출전 인원/팀 구성 수정"
     >
       {/* Drag Handle */}
       <button
@@ -67,14 +71,20 @@ export const SortableEventCard: React.FC<SortableEventCardProps> = ({
       {/* Action Buttons */}
       <div className="flex items-center gap-1 ml-auto">
         <button
-          onClick={() => onCopy(event)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onCopy(event);
+          }}
           className="text-indigo-600/70 hover:text-indigo-700 hover:bg-indigo-200/50 rounded p-0.5 transition-colors"
           title="복사"
         >
           <Copy className="w-3.5 h-3.5" />
         </button>
         <button
-          onClick={() => onDelete(event.id)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(event.id);
+          }}
           className="text-red-600/70 hover:text-red-700 hover:bg-red-200/50 rounded p-0.5 transition-colors"
           title="삭제"
         >
