@@ -2,10 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { SettingsView } from './components/SettingsView';
 import { GradeView } from './components/GradeView';
+import { LoginPage } from './components/LoginPage';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { CompetitionEvent, ClassTeam, GradeConfig, ViewMode } from './types';
 import { INITIAL_EVENTS } from './constants';
 
-const App: React.FC = () => {
+const AppContent: React.FC = () => {
+  const { user, loading: authLoading } = useAuth();
   // --- Data Migration Logic ---
   const DATA_VERSION = '2.1'; // Increment this when data structure changes
 
@@ -138,6 +141,23 @@ const App: React.FC = () => {
     }
   };
 
+  // 로딩 화면
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-indigo-600 mx-auto"></div>
+          <p className="mt-4 text-slate-600">로딩 중...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 로그인 페이지
+  if (!user) {
+    return <LoginPage />;
+  }
+
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
       <Sidebar
@@ -181,6 +201,14 @@ const App: React.FC = () => {
         )}
       </main>
     </div>
+  );
+};
+
+const App: React.FC = () => {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 };
 
