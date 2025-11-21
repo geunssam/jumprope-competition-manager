@@ -352,9 +352,24 @@ export const MatrixRecordTable: React.FC<MatrixRecordTableProps> = ({
                           {/* 단체전/짝 종목 */}
                           {(evt.type === 'TEAM' || evt.type === 'PAIR') && (
                             <div className="bg-slate-50 rounded-lg p-2 border border-slate-200">
-                              <p className="text-[10px] font-bold text-slate-500 uppercase mb-2">
-                                팀별 점수
-                              </p>
+                              <div className="flex items-center justify-between mb-2">
+                                <p className="text-[10px] font-bold text-slate-500 uppercase">
+                                  팀별 점수
+                                </p>
+                                {onEditParticipants && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onEditParticipants(evt.id, cls.id);
+                                    }}
+                                    className="flex items-center gap-1 px-2 py-1 text-[10px] text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                    title="출전 팀 수정"
+                                  >
+                                    <Edit3 className="w-3 h-3" />
+                                    출전 수정
+                                  </button>
+                                )}
+                              </div>
 
                               {result?.teams && result.teams.length > 0 ? (
                                 <div className="space-y-2">
@@ -444,19 +459,6 @@ export const MatrixRecordTable: React.FC<MatrixRecordTableProps> = ({
                                             +10
                                           </button>
                                         </div>
-                                      </div>
-                                      <div className="flex flex-wrap gap-1">
-                                        {team.memberIds.map((memberId) => {
-                                          const student = cls.students.find(s => s.id === memberId);
-                                          return (
-                                            <span
-                                              key={memberId}
-                                              className="text-[10px] px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded"
-                                            >
-                                              {student?.name || '???'}
-                                            </span>
-                                          );
-                                        })}
                                       </div>
                                     </div>
                                   ))}

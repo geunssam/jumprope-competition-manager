@@ -98,6 +98,7 @@ const App: React.FC = () => {
   // UI State
   const [currentView, setCurrentView] = useState<ViewMode>(ViewMode.GRADE);
   const [currentGrade, setCurrentGrade] = useState<number>(1);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
 
   // --- Persistence Effects ---
   useEffect(() => {
@@ -144,6 +145,8 @@ const App: React.FC = () => {
         onSelectGrade={handleSelectGrade}
         onSelectSettings={handleSelectSettings}
         isSettingsActive={currentView === ViewMode.SETTINGS}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
       />
 
       <main className="flex-1 flex flex-col overflow-hidden relative">
