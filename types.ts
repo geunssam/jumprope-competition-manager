@@ -35,6 +35,7 @@ export interface Team {
 export interface ClassResult {
   // Common
   score: number; // This is the aggregated score used for ranking
+  date?: string; // YYYY-MM-DD 경기 날짜
 
   // For INDIVIDUAL Events
   participantIds?: string[];  // Array of student IDs who are participating
@@ -65,6 +66,15 @@ export interface GradeConfig {
   }>;
   // Custom events created by copying (only visible in this grade)
   customEvents?: CompetitionEvent[];
+
+  // 날짜별 종목 선택 (신규 필드)
+  dateEvents?: Record<string, Record<string, {
+    selected: boolean;
+    targetParticipants: number;
+  }>>;
+
+  // 날짜별 커스텀 종목 (복사된 종목들)
+  customEventsByDate?: Record<string, CompetitionEvent[]>;
 }
 
 export enum ViewMode {

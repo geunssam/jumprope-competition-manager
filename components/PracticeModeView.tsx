@@ -4,10 +4,11 @@ import {
   savePracticeRecord,
   getPracticeRecordsByDate,
   getNextSessionNumber,
-  updatePersonalBest,
   recalculateClassStats
 } from '../services/firestore';
-import { Calendar, Save, TrendingUp, Award } from 'lucide-react';
+import { Calendar, Save, TrendingUp, BarChart3 } from 'lucide-react';
+import { CompetitionTimer } from './CompetitionTimer';
+import { StudentRecordModal } from './StudentRecordModal';
 
 interface PracticeModeViewProps {
   competitionId: string;
@@ -32,6 +33,7 @@ export const PracticeModeView: React.FC<PracticeModeViewProps> = ({
   const [saving, setSaving] = useState(false);
   const [selectedClassId, setSelectedClassId] = useState<string>(classes[0]?.id || '');
   const [selectedEventId, setSelectedEventId] = useState<string>(events[0]?.id || '');
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
 
   // 선택된 학급
   const selectedClass = classes.find(c => c.id === selectedClassId);
@@ -72,7 +74,7 @@ export const PracticeModeView: React.FC<PracticeModeViewProps> = ({
       }
     } catch (error) {
       console.error('기록 로드 실패:', error);
-      alert('기록을 불러오는데 실패했습니다.');
+      // 기록 로드 실패 시에도 경고창을 띄우지 않고 조용히 처리
     } finally {
       setLoading(false);
     }
@@ -116,7 +118,8 @@ export const PracticeModeView: React.FC<PracticeModeViewProps> = ({
       });
 
       if (recordsToSave.length === 0) {
-        alert('저장할 기록이 없습니다.');
+        // 기록이 없어도 경고창을 띄우지 않고 조용히 리턴
+        setSaving(false);
         return;
       }
 
@@ -124,7 +127,7 @@ export const PracticeModeView: React.FC<PracticeModeViewProps> = ({
       const savePromises = recordsToSave.map(async ({ studentId, eventId, score }) => {
         const sessionNum = await getNextSessionNumber(competitionId, gradeId, studentId, selectedDate);
 
-        const recordId = await savePracticeRecord(competitionId, gradeId, {
+        await savePracticeRecord(competitionId, gradeId, {
           studentId,
           eventId,
           score,
@@ -132,18 +135,6 @@ export const PracticeModeView: React.FC<PracticeModeViewProps> = ({
           sessionNumber: sessionNum,
           mode: 'practice'
         });
-
-        // 개인 최고 기록 체크 및 업데이트
-        const student = selectedClass.students.find(s => s.id === studentId);
-        const currentBest = student?.personalBests?.[eventId];
-
-        if (!currentBest || score > currentBest.score) {
-          await updatePersonalBest(selectedClassId, studentId, eventId, {
-            score,
-            date: selectedDate,
-            recordId
-          });
-        }
 
         // 학급 통계 재계산 (비동기)
         recalculateClassStats(competitionId, gradeId, eventId).catch(err =>
@@ -176,37 +167,29 @@ export const PracticeModeView: React.FC<PracticeModeViewProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* 헤더 */}
-      <div className="bg-gradient-to-r from-green-500 to-emerald-600 text-white p-6 rounded-lg shadow-md">
-        <h2 className="text-2xl font-bold mb-2">📝 연습 기록</h2>
-        <p className="text-green-100">학생들의 일상 연습 기록을 입력하고 성장을 추적하세요</p>
-      </div>
+      {/* 타이머 */}
+      <CompetitionTimer />
 
       {/* 날짜 및 세션 선택 */}
-      <div className="bg-white p-6 rounded-lg shadow-md space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              <Calendar className="inline w-4 h-4 mr-1" />
-              날짜
-            </label>
+      <div className="bg-white p-4 rounded-lg shadow-md">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-gray-700 whitespace-nowrap">날짜</span>
             <input
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
               max={today}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500"
+              className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500"
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              학급
-            </label>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-gray-700 whitespace-nowrap">학급</span>
             <select
               value={selectedClassId}
               onChange={(e) => setSelectedClassId(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500"
+              className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500"
             >
               {classes.map(cls => (
                 <option key={cls.id} value={cls.id}>
@@ -216,14 +199,12 @@ export const PracticeModeView: React.FC<PracticeModeViewProps> = ({
             </select>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              종목
-            </label>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-gray-700 whitespace-nowrap">종목</span>
             <select
               value={selectedEventId}
               onChange={(e) => setSelectedEventId(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500"
+              className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500"
             >
               {events.map(event => (
                 <option key={event.id} value={event.id}>
@@ -232,11 +213,11 @@ export const PracticeModeView: React.FC<PracticeModeViewProps> = ({
               ))}
             </select>
           </div>
-        </div>
 
-        <div className="flex items-center gap-2 text-sm text-gray-600">
-          <TrendingUp className="w-4 h-4" />
-          <span>오늘의 세션: {sessionNumber}회차</span>
+          <div className="flex items-center gap-2 text-sm text-gray-600 ml-auto">
+            <TrendingUp className="w-4 h-4" />
+            <span>오늘의 세션: {sessionNumber}회차</span>
+          </div>
         </div>
       </div>
 
@@ -245,48 +226,33 @@ export const PracticeModeView: React.FC<PracticeModeViewProps> = ({
         <div className="bg-white p-6 rounded-lg shadow-md">
           <h3 className="text-lg font-semibold mb-4">{selectedClass.name} - {events.find(e => e.id === selectedEventId)?.name}</h3>
 
-          <div className="space-y-2">
+          <div className="grid grid-cols-3 gap-3">
             {selectedClass.students.map((student) => {
               const currentScore = records[selectedClassId]?.[student.id]?.[selectedEventId] || 0;
-              const personalBest = student.personalBests?.[selectedEventId];
-              const isNewRecord = personalBest && currentScore > personalBest.score;
 
               return (
                 <div
                   key={student.id}
-                  className={`flex items-center gap-4 p-3 rounded-lg border ${
-                    isNewRecord ? 'bg-yellow-50 border-yellow-300' : 'bg-gray-50 border-gray-200'
-                  }`}
+                  className="flex items-center gap-2 p-3 rounded-lg border bg-gray-50 border-gray-200"
                 >
-                  <div className="flex-1 flex items-center gap-2">
-                    <span className="font-medium text-gray-700">{student.name}</span>
-                    {personalBest && (
-                      <span className="text-xs text-gray-500">
-                        <Award className="inline w-3 h-3" /> 최고: {personalBest.score}회
-                      </span>
-                    )}
-                  </div>
+                  <span className="font-medium text-gray-700 text-sm flex-shrink-0">{student.name}</span>
 
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min="0"
-                      value={currentScore || ''}
-                      onChange={(e) => handleScoreChange(student.id, selectedEventId, e.target.value)}
-                      placeholder="0"
-                      className="w-20 px-3 py-2 border border-gray-300 rounded-md text-center focus:ring-2 focus:ring-green-500"
-                    />
-                    <span className="text-gray-600">회</span>
-                    {isNewRecord && (
-                      <span className="text-yellow-600 font-semibold text-sm">✨ 신기록!</span>
-                    )}
-                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    value={currentScore || ''}
+                    onChange={(e) => handleScoreChange(student.id, selectedEventId, e.target.value)}
+                    placeholder="0"
+                    className="w-20 px-3 py-2 border border-gray-300 rounded-md text-center focus:ring-2 focus:ring-green-500 ml-auto"
+                  />
+                  <span className="text-gray-600 text-sm flex-shrink-0">회</span>
 
                   <button
-                    onClick={() => onStudentDetailClick?.(student.id)}
-                    className="text-sm text-blue-600 hover:text-blue-800"
+                    onClick={() => setSelectedStudentId(student.id)}
+                    className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors flex-shrink-0"
+                    title="상세 기록 보기"
                   >
-                    상세보기
+                    <BarChart3 className="w-4 h-4" />
                   </button>
                 </div>
               );
@@ -310,6 +276,17 @@ export const PracticeModeView: React.FC<PracticeModeViewProps> = ({
             </button>
           </div>
         </div>
+      )}
+
+      {/* 학생 상세 기록 모달 */}
+      {selectedStudentId && selectedClass && (
+        <StudentRecordModal
+          competitionId={competitionId}
+          gradeId={`grade_${grade}`}
+          student={selectedClass.students.find(s => s.id === selectedStudentId)!}
+          events={events}
+          onClose={() => setSelectedStudentId(null)}
+        />
       )}
     </div>
   );

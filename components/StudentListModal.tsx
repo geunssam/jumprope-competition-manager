@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Edit2, Trash2, UserPlus, Check } from 'lucide-react';
+import { X, Edit2, Trash2, UserPlus, Check, BarChart3 } from 'lucide-react';
 import { ClassTeam, Student } from '../types';
 import { Button } from './Button';
 
@@ -7,12 +7,14 @@ interface StudentListModalProps {
   classData: ClassTeam;
   onClose: () => void;
   onUpdateStudents: (classId: string, students: Student[]) => void;
+  onShowStudentRecord?: (studentId: string) => void;
 }
 
 export const StudentListModal: React.FC<StudentListModalProps> = ({
   classData,
   onClose,
-  onUpdateStudents
+  onUpdateStudents,
+  onShowStudentRecord
 }) => {
   const [students, setStudents] = useState<Student[]>(classData.students);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -141,6 +143,15 @@ export const StudentListModal: React.FC<StudentListModalProps> = ({
                       {student.name}
                     </span>
                     <div className="flex gap-1">
+                      {onShowStudentRecord && (
+                        <button
+                          onClick={() => onShowStudentRecord(student.id)}
+                          className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                          title="상세 기록 보기"
+                        >
+                          <BarChart3 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                       <button
                         onClick={() => handleStartEdit(student)}
                         className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors"

@@ -27,6 +27,7 @@ import {
 } from '@dnd-kit/sortable';
 import { SortableEventCard } from './SortableEventCard';
 import { PracticeModeView } from './PracticeModeView';
+import { StudentRecordModal } from './StudentRecordModal';
 
 interface GradeViewProps {
   grade: number;
@@ -60,12 +61,20 @@ export const GradeView: React.FC<GradeViewProps> = ({
   const [allClasses, setAllClasses] = useState<ClassTeam[]>([]);
   const [activeEventTab, setActiveEventTab] = useState<EventSubTab>('INDIVIDUAL');
 
+  // 날짜 선택 state (오늘 날짜로 초기화)
+  const [selectedDate, setSelectedDate] = useState<string>(
+    new Date().toISOString().split('T')[0]
+  );
+
   // For Records Tab
   const [selectedRecordEventId, setSelectedRecordEventId] = useState<string | null>(null);
 
   // For Multi-Class Participant/Team Management
   const [multiClassParticipantModalEvent, setMultiClassParticipantModalEvent] = useState<CompetitionEvent | null>(null);
   const [multiClassTeamModalEvent, setMultiClassTeamModalEvent] = useState<CompetitionEvent | null>(null);
+
+  // For Student Record Viewing
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
 
   // For Drag and Drop
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -91,16 +100,50 @@ export const GradeView: React.FC<GradeViewProps> = ({
     }
   }, [isClassManagementOpen, competitionId]);
 
+  // 기존 데이터를 날짜별 구조로 마이그레이션
+  useEffect(() => {
+    if (!gradeConfig || gradeConfig.dateEvents) return;
+
+    // events가 있고 dateEvents가 없으면 마이그레이션
+    if (gradeConfig.events && Object.keys(gradeConfig.events).length > 0) {
+      const today = new Date().toISOString().split('T')[0];
+
+      console.log('🔄 기존 데이터를 날짜별 구조로 마이그레이션:', {
+        grade,
+        today,
+        eventCount: Object.keys(gradeConfig.events).length
+      });
+
+      onUpdateConfig({
+        ...gradeConfig,
+        dateEvents: {
+          [today]: gradeConfig.events
+        }
+      });
+    }
+  }, [gradeConfig, grade, onUpdateConfig]);
+
   // Filter classes for this grade
   const gradeClasses = useMemo(() =>
     classes.filter(c => c.grade === grade),
   [classes, grade]);
 
-  // Get base selected events (without custom ordering)
+  // Get base selected events (without custom ordering) - 날짜별로 필터링
   const baseSelectedEvents = useMemo(() => {
-    if (!gradeConfig || !gradeConfig.events) return [];
-    return events.filter(e => gradeConfig.events[e.id]?.selected);
-  }, [events, gradeConfig]);
+    if (!gradeConfig) return [];
+
+    // 해당 날짜의 선택 정보 가져오기
+    const currentDateEvents = gradeConfig.dateEvents?.[selectedDate] || gradeConfig.events || {};
+
+    // 전역 종목 중 선택된 것
+    const globalSelected = events.filter(e => currentDateEvents[e.id]?.selected);
+
+    // 해당 날짜의 커스텀 종목 (복사된 종목들)
+    const customEvents = gradeConfig.customEventsByDate?.[selectedDate] || [];
+    const customSelected = customEvents.filter(e => currentDateEvents[e.id]?.selected);
+
+    return [...globalSelected, ...customSelected];
+  }, [events, gradeConfig, selectedDate]);
 
   // Initialize order when base events change (but don't override user's drag order)
   useEffect(() => {
@@ -191,9 +234,13 @@ export const GradeView: React.FC<GradeViewProps> = ({
     // 1. 패턴 추출: "긴줄넘기 2" → "긴줄넘기"
     const namePattern = originalEvent.name.replace(/\s*\d+$/, '').trim();
 
-    // 2. 같은 패턴으로 시작하는 종목들 찾기
+    // 2. 해당 날짜의 기존 종목들과 커스텀 종목들 모두 가져오기
+    const currentDateCustomEvents = gradeConfig.customEventsByDate?.[selectedDate] || [];
+    const allEventsForDate = [...events, ...currentDateCustomEvents];
+
+    // 같은 패턴으로 시작하는 종목들 찾기
     const regex = new RegExp(`^${namePattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s+\\d+)?$`);
-    const relatedEvents = events.filter(e => regex.test(e.name));
+    const relatedEvents = allEventsForDate.filter(e => regex.test(e.name));
 
     // 3. 가장 큰 번호 찾기
     let maxNumber = 0;
@@ -217,29 +264,34 @@ export const GradeView: React.FC<GradeViewProps> = ({
       name: newName,
     };
 
-    // 6. 전체 events 배열에 원본 바로 다음에 삽입
-    const originalIndex = events.findIndex(e => e.id === originalEvent.id);
-    const newEvents = [
-      ...events.slice(0, originalIndex + 1),
-      newEvent,
-      ...events.slice(originalIndex + 1)
-    ];
-    onUpdateEvents(newEvents);
+    // 6. 전역 events 배열 업데이트 제거 - 날짜별 커스텀 종목으로만 추가
+    // onUpdateEvents(newEvents); ❌ 삭제됨
 
-    // 7. gradeConfig에 자동 선택 및 참가 인원 설정
-    const originalConfig = gradeConfig.events[originalEvent.id] || { selected: false, targetParticipants: 0 };
+    // 7. 날짜별 gradeConfig에 추가
+    const currentDateEvents = gradeConfig.dateEvents?.[selectedDate] || {};
+    const originalConfig = currentDateEvents[originalEvent.id] ||
+      gradeConfig.events[originalEvent.id] ||
+      { selected: false, targetParticipants: 0 };
+
     onUpdateConfig({
       ...gradeConfig,
-      events: {
-        ...gradeConfig.events,
-        [newEvent.id]: {
-          selected: true,
-          targetParticipants: originalConfig.targetParticipants
+      dateEvents: {
+        ...gradeConfig.dateEvents,
+        [selectedDate]: {
+          ...currentDateEvents,
+          [newEvent.id]: {
+            selected: true,
+            targetParticipants: originalConfig.targetParticipants
+          }
         }
+      },
+      customEventsByDate: {
+        ...gradeConfig.customEventsByDate,
+        [selectedDate]: [...currentDateCustomEvents, newEvent]
       }
     });
 
-    // 8. 모든 학급의 참가 데이터 복사 (점수는 0으로 리셋)
+    // 8. 모든 학급의 참가 데이터 복사 (점수는 0으로 리셋, 날짜 포함)
     const updatedClasses = classes.map(c => {
       // 이 학년의 학급만 처리
       if (c.grade !== grade) return c;
@@ -247,8 +299,11 @@ export const GradeView: React.FC<GradeViewProps> = ({
       const originalResult = c.results[originalEvent.id];
       if (!originalResult) return c;
 
-      // 새 종목에 대한 결과 생성 (점수는 0으로)
-      let newResult: any = { score: 0 };
+      // 새 종목에 대한 결과 생성 (점수는 0으로, 날짜 추가)
+      let newResult: any = {
+        score: 0,
+        date: selectedDate
+      };
 
       if (originalEvent.type === 'INDIVIDUAL') {
         // 개인 종목: participantIds와 studentScores 구조 복사 (점수는 0으로)
@@ -280,19 +335,29 @@ export const GradeView: React.FC<GradeViewProps> = ({
   };
 
   const handleToggleEvent = (eventId: string) => {
-    const currentConfig = gradeConfig.events[eventId] || { selected: false, targetParticipants: 0 };
-    const event = events.find(e => e.id === eventId);
+    // 날짜별 config 확인
+    const currentDateEvents = gradeConfig.dateEvents?.[selectedDate] || {};
+    const currentConfig = currentDateEvents[eventId] ||
+      gradeConfig.events[eventId] ||
+      { selected: false, targetParticipants: 0 };
+
+    const event = events.find(e => e.id === eventId) ||
+      gradeConfig.customEventsByDate?.[selectedDate]?.find(e => e.id === eventId);
+
     const isSelecting = !currentConfig.selected;
 
-    // Update config first
+    // 날짜별 config 업데이트
     onUpdateConfig({
       ...gradeConfig,
-      events: {
-        ...gradeConfig.events,
-        [eventId]: {
-          ...currentConfig,
-          selected: isSelecting,
-          targetParticipants: currentConfig.targetParticipants || event?.defaultMaxParticipants || 0
+      dateEvents: {
+        ...gradeConfig.dateEvents,
+        [selectedDate]: {
+          ...currentDateEvents,
+          [eventId]: {
+            ...currentConfig,
+            selected: isSelecting,
+            targetParticipants: currentConfig.targetParticipants || event?.defaultMaxParticipants || 0
+          }
         }
       }
     });
@@ -423,14 +488,21 @@ export const GradeView: React.FC<GradeViewProps> = ({
   };
 
   const handleEventParticipantChange = (eventId: string, count: number) => {
-    const currentConfig = gradeConfig.events[eventId] || { selected: false, targetParticipants: 0 };
+    const currentDateEvents = gradeConfig.dateEvents?.[selectedDate] || {};
+    const currentConfig = currentDateEvents[eventId] ||
+      gradeConfig.events[eventId] ||
+      { selected: false, targetParticipants: 0 };
+
     onUpdateConfig({
       ...gradeConfig,
-      events: {
-        ...gradeConfig.events,
-        [eventId]: {
-          ...currentConfig,
-          targetParticipants: count
+      dateEvents: {
+        ...gradeConfig.dateEvents,
+        [selectedDate]: {
+          ...currentDateEvents,
+          [eventId]: {
+            ...currentConfig,
+            targetParticipants: count
+          }
         }
       }
     });
@@ -622,18 +694,27 @@ export const GradeView: React.FC<GradeViewProps> = ({
   );
 
   const renderEventsTab = () => {
+    // 해당 날짜의 선택 정보
+    const currentDateEvents = gradeConfig.dateEvents?.[selectedDate] || gradeConfig.events || {};
+
+    // 해당 날짜의 커스텀 종목
+    const customEvents = gradeConfig.customEventsByDate?.[selectedDate] || [];
+
+    // 전체 종목 (전역 + 커스텀)
+    const allEventsForDate = [...events, ...customEvents];
+
     // Filter events by type
-    const individualEvents = events.filter(e => e.type === 'INDIVIDUAL');
-    const pairEvents = events.filter(e => e.type === 'PAIR');
-    const teamEvents = events.filter(e => e.type === 'TEAM');
+    const individualEvents = allEventsForDate.filter(e => e.type === 'INDIVIDUAL');
+    const pairEvents = allEventsForDate.filter(e => e.type === 'PAIR');
+    const teamEvents = allEventsForDate.filter(e => e.type === 'TEAM');
 
     // Get selected events count by type
-    const selectedIndividual = individualEvents.filter(e => gradeConfig.events[e.id]?.selected).length;
-    const selectedPair = pairEvents.filter(e => gradeConfig.events[e.id]?.selected).length;
-    const selectedTeam = teamEvents.filter(e => gradeConfig.events[e.id]?.selected).length;
+    const selectedIndividual = individualEvents.filter(e => currentDateEvents[e.id]?.selected).length;
+    const selectedPair = pairEvents.filter(e => currentDateEvents[e.id]?.selected).length;
+    const selectedTeam = teamEvents.filter(e => currentDateEvents[e.id]?.selected).length;
 
     // Get all selected events
-    const selectedEvents = events.filter(e => gradeConfig.events[e.id]?.selected);
+    const selectedEvents = allEventsForDate.filter(e => currentDateEvents[e.id]?.selected);
 
     const eventTabs: { id: EventSubTab; label: string; count: number; total: number }[] = [
       { id: 'INDIVIDUAL', label: '개인', count: selectedIndividual, total: individualEvents.length },
@@ -642,7 +723,10 @@ export const GradeView: React.FC<GradeViewProps> = ({
     ];
 
     const renderEventCard = (evt: CompetitionEvent) => {
-      const config = gradeConfig.events[evt.id] || { selected: false, targetParticipants: 0 };
+      const currentDateEvents = gradeConfig.dateEvents?.[selectedDate] || {};
+      const config = currentDateEvents[evt.id] ||
+        gradeConfig.events[evt.id] ||
+        { selected: false, targetParticipants: 0 };
       const isSelected = config.selected;
 
       return (
@@ -951,7 +1035,22 @@ export const GradeView: React.FC<GradeViewProps> = ({
       {/* Header with Tabs */}
       <header className="bg-white border-b border-slate-200 flex-shrink-0">
         <div className="px-8 py-5 flex items-center justify-between">
-          <h2 className="text-2xl font-bold text-slate-900">{grade}학년 대회 관리</h2>
+          <div className="flex items-center gap-6">
+            <h2 className="text-2xl font-bold text-slate-900">{grade}학년 대회 관리</h2>
+
+            {/* 날짜 선택기 */}
+            {viewMode === 'competition' && (
+              <div className="flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-lg border border-slate-200">
+                <label className="text-sm font-bold text-slate-700 whitespace-nowrap">경기 날짜:</label>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="px-2 py-1 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                />
+              </div>
+            )}
+          </div>
 
           <div className="flex items-center gap-3">
             {/* Class Management Button */}
@@ -1055,8 +1154,37 @@ export const GradeView: React.FC<GradeViewProps> = ({
           onAddClass={handleAddClass}
           onDeleteClass={handleDeleteClass}
           onUpdateStudents={handleUpdateStudents}
+          onShowStudentRecord={(studentId) => setSelectedStudentId(studentId)}
         />
       )}
+
+      {/* Student Record Modal */}
+      {selectedStudentId && (() => {
+        // Find the student across all classes
+        let foundStudent: Student | undefined;
+        let foundClass: ClassTeam | undefined;
+
+        for (const cls of allClasses) {
+          const student = cls.students.find(s => s.id === selectedStudentId);
+          if (student) {
+            foundStudent = student;
+            foundClass = cls;
+            break;
+          }
+        }
+
+        if (!foundStudent || !foundClass) return null;
+
+        return (
+          <StudentRecordModal
+            competitionId={competitionId}
+            gradeId={`grade_${grade}`}
+            student={foundStudent}
+            events={events}
+            onClose={() => setSelectedStudentId(null)}
+          />
+        );
+      })()}
     </div>
   );
 };

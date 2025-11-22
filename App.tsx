@@ -191,6 +191,19 @@ const AppContent: React.FC = () => {
 
   const handleUpdateEvents = async (updatedEvents: CompetitionEvent[]) => {
     if (!currentCompetitionId) return;
+
+    // 삭제된 종목 찾기
+    const existingIds = events.map(e => e.id);
+    const updatedIds = updatedEvents.map(e => e.id);
+    const deletedIds = existingIds.filter(id => !updatedIds.includes(id));
+
+    // Firestore에서 실제 삭제
+    const { deleteEvent } = await import('./services/firestore');
+    for (const id of deletedIds) {
+      await deleteEvent(id);
+    }
+
+    // 나머지 업데이트
     await batchUpdateEvents(currentCompetitionId, updatedEvents);
     // 실시간 리스너가 자동으로 업데이트
   };

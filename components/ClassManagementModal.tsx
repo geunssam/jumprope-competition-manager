@@ -12,6 +12,7 @@ interface ClassManagementModalProps {
   onAddClass: (grade: number, className: string, students: Student[]) => void;
   onDeleteClass: (classId: string) => void;
   onUpdateStudents: (classId: string, students: Student[]) => void;
+  onShowStudentRecord?: (studentId: string) => void;
 }
 
 export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
@@ -20,7 +21,8 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
   onClose,
   onAddClass,
   onDeleteClass,
-  onUpdateStudents
+  onUpdateStudents,
+  onShowStudentRecord
 }) => {
   const [selectedGrade, setSelectedGrade] = useState<number>(1);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -203,6 +205,7 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({
           classData={selectedClass}
           onClose={() => setSelectedClass(null)}
           onUpdateStudents={onUpdateStudents}
+          onShowStudentRecord={onShowStudentRecord}
         />
       )}
     </>
