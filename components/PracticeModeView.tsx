@@ -9,6 +9,8 @@ import {
 import { Calendar, Save, TrendingUp, BarChart3 } from 'lucide-react';
 import { CompetitionTimer } from './CompetitionTimer';
 import { StudentRecordModal } from './StudentRecordModal';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
 
 interface PracticeModeViewProps {
   competitionId: string;
@@ -25,8 +27,16 @@ export const PracticeModeView: React.FC<PracticeModeViewProps> = ({
   classes,
   onStudentDetailClick
 }) => {
-  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-  const [selectedDate, setSelectedDate] = useState<string>(today);
+  // Date 객체로 날짜 관리
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+
+  // YYYY-MM-DD 형식으로 변환하는 헬퍼 함수
+  const formatDateString = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
   const [sessionNumber, setSessionNumber] = useState<number>(1);
   const [records, setRecords] = useState<Record<string, Record<string, number>>>({}); // classId -> studentId -> eventId -> score
   const [loading, setLoading] = useState(false);
@@ -37,6 +47,20 @@ export const PracticeModeView: React.FC<PracticeModeViewProps> = ({
 
   // 선택된 학급
   const selectedClass = classes.find(c => c.id === selectedClassId);
+
+  // classes가 로드되면 첫 번째 학급 자동 선택
+  useEffect(() => {
+    if (classes.length > 0 && !selectedClassId) {
+      setSelectedClassId(classes[0].id);
+    }
+  }, [classes]);
+
+  // events가 로드되면 첫 번째 종목 자동 선택
+  useEffect(() => {
+    if (events.length > 0 && !selectedEventId) {
+      setSelectedEventId(events[0].id);
+    }
+  }, [events]);
 
   // 날짜 변경 시 해당 날짜의 기록 로드
   useEffect(() => {
@@ -49,7 +73,8 @@ export const PracticeModeView: React.FC<PracticeModeViewProps> = ({
     setLoading(true);
     try {
       const gradeId = `grade_${grade}`;
-      const practiceRecords = await getPracticeRecordsByDate(competitionId, gradeId, selectedDate);
+      const dateString = formatDateString(selectedDate);
+      const practiceRecords = await getPracticeRecordsByDate(competitionId, gradeId, dateString);
 
       // 기록을 state에 반영
       const newRecords: Record<string, Record<string, number>> = {};
@@ -124,14 +149,15 @@ export const PracticeModeView: React.FC<PracticeModeViewProps> = ({
       }
 
       // 각 기록 저장
+      const dateString = formatDateString(selectedDate);
       const savePromises = recordsToSave.map(async ({ studentId, eventId, score }) => {
-        const sessionNum = await getNextSessionNumber(competitionId, gradeId, studentId, selectedDate);
+        const sessionNum = await getNextSessionNumber(competitionId, gradeId, studentId, dateString);
 
         await savePracticeRecord(competitionId, gradeId, {
           studentId,
           eventId,
           score,
-          date: selectedDate,
+          date: dateString,
           sessionNumber: sessionNum,
           mode: 'practice'
         });
@@ -175,12 +201,16 @@ export const PracticeModeView: React.FC<PracticeModeViewProps> = ({
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-gray-700 whitespace-nowrap">날짜</span>
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              max={today}
-              className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500"
+            <DatePicker
+              selected={selectedDate}
+              onChange={(date: Date | null) => {
+                if (date) {
+                  setSelectedDate(date);
+                }
+              }}
+              dateFormat="yyyy-MM-dd"
+              className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 cursor-pointer"
+              calendarClassName="shadow-lg"
             />
           </div>
 

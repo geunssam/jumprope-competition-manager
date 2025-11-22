@@ -54,7 +54,7 @@ export const GradeView: React.FC<GradeViewProps> = ({
   onUpdateEvents,
   competitionId,
 }) => {
-  const [viewMode, setViewMode] = useState<ViewModeType>('competition');
+  const [viewMode, setViewMode] = useState<ViewModeType>('practice');
   const [activeTab, setActiveTab] = useState<TabType>('EVENTS');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isClassManagementOpen, setIsClassManagementOpen] = useState(false);
