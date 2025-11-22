@@ -164,12 +164,23 @@ export default function PrivacyConsentGuard({ children }: PrivacyConsentGuardPro
   }
 
   // 동의하지 않았으면 강제 모달 표시 (닫기 불가)
+  // 중요: children을 렌더링하지 않아서 Firestore 쓰기 작업이 실행되지 않도록 함
   if (!hasConsent && user && !loading) {
     return (
-      <>
-        {/* 배경 블러 처리 */}
-        <div className="min-h-screen bg-gray-200 blur-sm pointer-events-none">
-          {children}
+      <div className="min-h-screen bg-gradient-to-br from-blue-100 via-purple-100 to-pink-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="mb-8">
+            <div className="w-20 h-20 bg-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">환영합니다!</h2>
+            <p className="text-gray-600">
+              서비스 이용을 위해 개인정보 처리방침에<br />
+              동의가 필요합니다.
+            </p>
+          </div>
         </div>
 
         {/* 강제 모달 (닫기 불가) */}
@@ -180,7 +191,7 @@ export default function PrivacyConsentGuard({ children }: PrivacyConsentGuardPro
           onDisagree={handleDisagree} // 거부 핸들러 추가
           canClose={false} // 강제 동의
         />
-      </>
+      </div>
     );
   }
 
