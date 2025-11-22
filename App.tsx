@@ -253,6 +253,7 @@ const AppContent: React.FC = () => {
           ) : (
             <GradeView
               key={currentGrade} // Force re-render on grade switch to clear local inputs if needed
+              competitionId={currentCompetitionId!}
               grade={currentGrade}
               classes={classes}
               events={events}

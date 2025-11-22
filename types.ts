@@ -3,6 +3,15 @@ export type EventType = 'INDIVIDUAL' | 'PAIR' | 'TEAM';
 export interface Student {
   id: string;
   name: string;
+  number?: number; // 학생 번호
+  // 연습 기록 관련
+  personalBests?: Record<string, {
+    score: number;
+    date: string; // YYYY-MM-DD
+    recordId: string;
+  }>;
+  totalPracticeCount?: number; // 총 연습 횟수
+  lastPracticeDate?: string; // 마지막 연습 날짜 (YYYY-MM-DD)
 }
 
 export interface CompetitionEvent {
@@ -61,4 +70,39 @@ export interface GradeConfig {
 export enum ViewMode {
   GRADE = 'GRADE',
   SETTINGS = 'SETTINGS'
+}
+
+// 연습 기록 타입
+export type RecordMode = 'competition' | 'practice';
+
+// 연습 기록 인터페이스
+export interface PracticeRecord {
+  id: string;
+  studentId: string;
+  eventId: string; // 종목 ID
+  score: number; // 기록 (횟수)
+  date: string; // YYYY-MM-DD
+  sessionNumber: number; // 그날의 몇 번째 연습인지 (1, 2, 3...)
+  mode: RecordMode;
+  createdAt: Date;
+  notes?: string; // 메모 (선택)
+}
+
+// 교사 설정 인터페이스
+export interface TeacherSettings {
+  teacherId: string; // Firebase user ID
+  selectedGrades: number[]; // 선택한 학년 (예: [3, 4])
+  competitionId: string;
+  updatedAt?: Date;
+}
+
+// 학급 통계 인터페이스
+export interface ClassStats {
+  gradeId: string; // grade_1, grade_2, etc.
+  eventId: string;
+  averageScore: number; // 평균 기록
+  topScore: number; // 최고 기록
+  totalRecords: number; // 총 기록 수
+  participationRate: number; // 참여율 (%)
+  lastUpdated: Date;
 }

@@ -14,7 +14,7 @@ import {
   Unsubscribe
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { ClassTeam, CompetitionEvent, GradeConfig } from '../types';
+import { ClassTeam, CompetitionEvent, GradeConfig, PracticeRecord, TeacherSettings, ClassStats } from '../types';
 
 // === 대회 관리 ===
 export const createCompetition = async (userId: string, name: string): Promise<string> => {
@@ -84,6 +84,13 @@ export const updateClass = async (classId: string, updates: Partial<ClassTeam>) 
   });
 };
 
+export const updateClassStudents = async (classId: string, students: Student[]) => {
+  await updateDoc(doc(db, 'classes', classId), {
+    students,
+    updatedAt: serverTimestamp()
+  });
+};
+
 export const deleteClass = async (classId: string) => {
   await deleteDoc(doc(db, 'classes', classId));
 };
@@ -99,6 +106,20 @@ export const getGradeClasses = async (
   );
   const snapshot = await getDocs(q);
   return snapshot.docs.map(doc => doc.data() as ClassTeam);
+};
+
+export const getAllClasses = async (
+  competitionId: string
+): Promise<ClassTeam[]> => {
+  const q = query(
+    collection(db, 'classes'),
+    where('competitionId', '==', competitionId)
+  );
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  } as ClassTeam));
 };
 
 export const subscribeToGradeClasses = (
@@ -290,4 +311,221 @@ export const savePrivacyConsent = async (params: {
     console.error('❌ [savePrivacyConsent] 예외 발생:', error);
     throw error;
   }
+};
+
+// === 연습 기록 관리 ===
+
+/**
+ * 연습 기록 저장
+ */
+export const savePracticeRecord = async (
+  competitionId: string,
+  gradeId: string,
+  record: Omit<PracticeRecord, 'id' | 'createdAt'>
+): Promise<string> => {
+  const recordRef = doc(collection(db, 'competitions', competitionId, 'grades', gradeId, 'practiceRecords'));
+  const recordData = {
+    ...record,
+    createdAt: serverTimestamp()
+  };
+  await setDoc(recordRef, recordData);
+  return recordRef.id;
+};
+
+/**
+ * 특정 날짜의 연습 기록 조회
+ */
+export const getPracticeRecordsByDate = async (
+  competitionId: string,
+  gradeId: string,
+  date: string
+): Promise<PracticeRecord[]> => {
+  const q = query(
+    collection(db, 'competitions', competitionId, 'grades', gradeId, 'practiceRecords'),
+    where('date', '==', date)
+  );
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  } as PracticeRecord));
+};
+
+/**
+ * 학생별 모든 연습 기록 조회
+ */
+export const getStudentPracticeRecords = async (
+  competitionId: string,
+  gradeId: string,
+  studentId: string
+): Promise<PracticeRecord[]> => {
+  const q = query(
+    collection(db, 'competitions', competitionId, 'grades', gradeId, 'practiceRecords'),
+    where('studentId', '==', studentId)
+  );
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  } as PracticeRecord));
+};
+
+/**
+ * 종목별 학생 기록 조회
+ */
+export const getStudentEventRecords = async (
+  competitionId: string,
+  gradeId: string,
+  studentId: string,
+  eventId: string
+): Promise<PracticeRecord[]> => {
+  const q = query(
+    collection(db, 'competitions', competitionId, 'grades', gradeId, 'practiceRecords'),
+    where('studentId', '==', studentId),
+    where('eventId', '==', eventId)
+  );
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  } as PracticeRecord));
+};
+
+/**
+ * 개인 최고 기록 업데이트
+ */
+export const updatePersonalBest = async (
+  classId: string,
+  studentId: string,
+  eventId: string,
+  record: {
+    score: number;
+    date: string;
+    recordId: string;
+  }
+): Promise<void> => {
+  const classRef = doc(db, 'classes', classId);
+  const classDoc = await getDoc(classRef);
+
+  if (!classDoc.exists()) {
+    throw new Error('Class not found');
+  }
+
+  const classData = classDoc.data() as ClassTeam;
+  const students = classData.students || [];
+  const studentIndex = students.findIndex(s => s.id === studentId);
+
+  if (studentIndex === -1) {
+    throw new Error('Student not found');
+  }
+
+  const updatedStudents = [...students];
+  if (!updatedStudents[studentIndex].personalBests) {
+    updatedStudents[studentIndex].personalBests = {};
+  }
+  updatedStudents[studentIndex].personalBests![eventId] = record;
+
+  await updateDoc(classRef, {
+    students: updatedStudents,
+    updatedAt: serverTimestamp()
+  });
+};
+
+/**
+ * 학급 통계 재계산
+ */
+export const recalculateClassStats = async (
+  competitionId: string,
+  gradeId: string,
+  eventId: string
+): Promise<void> => {
+  // 모든 연습 기록 가져오기
+  const q = query(
+    collection(db, 'competitions', competitionId, 'grades', gradeId, 'practiceRecords'),
+    where('eventId', '==', eventId)
+  );
+  const snapshot = await getDocs(q);
+  const records = snapshot.docs.map(doc => doc.data() as PracticeRecord);
+
+  if (records.length === 0) {
+    return; // 기록이 없으면 통계 생성 안 함
+  }
+
+  // 통계 계산
+  const scores = records.map(r => r.score);
+  const averageScore = scores.reduce((sum, score) => sum + score, 0) / scores.length;
+  const topScore = Math.max(...scores);
+  const uniqueStudents = new Set(records.map(r => r.studentId));
+
+  // 참여율은 별도로 계산 필요 (전체 학생 수 필요)
+  const statsData: ClassStats = {
+    gradeId,
+    eventId,
+    averageScore: Math.round(averageScore * 10) / 10, // 소수점 1자리
+    topScore,
+    totalRecords: records.length,
+    participationRate: 0, // 추후 계산
+    lastUpdated: new Date()
+  };
+
+  const statsRef = doc(db, 'competitions', competitionId, 'grades', gradeId, 'classStats', eventId);
+  await setDoc(statsRef, statsData, { merge: true });
+};
+
+/**
+ * 그날의 다음 세션 번호 가져오기
+ */
+export const getNextSessionNumber = async (
+  competitionId: string,
+  gradeId: string,
+  studentId: string,
+  date: string
+): Promise<number> => {
+  const q = query(
+    collection(db, 'competitions', competitionId, 'grades', gradeId, 'practiceRecords'),
+    where('studentId', '==', studentId),
+    where('date', '==', date)
+  );
+  const snapshot = await getDocs(q);
+  const records = snapshot.docs.map(doc => doc.data() as PracticeRecord);
+
+  if (records.length === 0) {
+    return 1;
+  }
+
+  const maxSession = Math.max(...records.map(r => r.sessionNumber));
+  return maxSession + 1;
+};
+
+// === 교사 설정 관리 ===
+
+/**
+ * 교사 설정 저장
+ */
+export const saveTeacherSettings = async (settings: TeacherSettings): Promise<void> => {
+  await setDoc(doc(db, 'teacherSettings', settings.teacherId), {
+    ...settings,
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+};
+
+/**
+ * 교사 설정 조회
+ */
+export const getTeacherSettings = async (teacherId: string): Promise<TeacherSettings | null> => {
+  const snapshot = await getDoc(doc(db, 'teacherSettings', teacherId));
+  return snapshot.exists() ? snapshot.data() as TeacherSettings : null;
+};
+
+/**
+ * 학급 통계 조회
+ */
+export const getClassStats = async (
+  competitionId: string,
+  gradeId: string,
+  eventId: string
+): Promise<ClassStats | null> => {
+  const statsRef = doc(db, 'competitions', competitionId, 'grades', gradeId, 'classStats', eventId);
+  const snapshot = await getDoc(statsRef);
+  return snapshot.exists() ? snapshot.data() as ClassStats : null;
 };

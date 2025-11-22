@@ -4,8 +4,8 @@ import { Button } from './Button';
 import { Student } from '../types';
 
 interface CreateClassModalProps {
-  grade: number;
-  onSubmit: (className: string, students: Student[]) => void;
+  grade?: number;
+  onSubmit: (grade: number, className: string, students: Student[]) => void;
   onClose: () => void;
 }
 
@@ -14,6 +14,7 @@ export const CreateClassModal: React.FC<CreateClassModalProps> = ({
   onSubmit,
   onClose,
 }) => {
+  const [selectedGrade, setSelectedGrade] = useState<number>(grade || 1);
   const [className, setClassName] = useState('');
   const [studentNames, setStudentNames] = useState('');
 
@@ -45,7 +46,7 @@ export const CreateClassModal: React.FC<CreateClassModalProps> = ({
       return;
     }
 
-    onSubmit(className.trim(), students);
+    onSubmit(selectedGrade, className.trim(), students);
   };
 
   return (
@@ -65,7 +66,7 @@ export const CreateClassModal: React.FC<CreateClassModalProps> = ({
             </div>
             <div>
               <h3 className="text-lg font-bold">새 학급 등록</h3>
-              <p className="text-sm text-indigo-100">{grade}학년</p>
+              <p className="text-sm text-indigo-100">학급 정보를 입력하세요</p>
             </div>
           </div>
           <button
@@ -80,22 +81,35 @@ export const CreateClassModal: React.FC<CreateClassModalProps> = ({
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto flex flex-col">
           <div className="flex-1 p-6">
             <div className="space-y-6">
-              {/* Class Name Input */}
-              <div>
-                <label className="block text-sm font-bold text-slate-900 mb-2">
-                  학급명 <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={className}
-                  onChange={(e) => setClassName(e.target.value)}
-                  placeholder="예: 1반"
-                  className="w-full px-4 py-3 border-2 border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-lg"
-                  autoFocus
-                />
-                <p className="text-xs text-slate-500 mt-1">
-                  학급 이름을 입력하세요 (예: 1반, 2반, 가반, 나반 등)
-                </p>
+              {/* Grade and Class Name Input */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-900 mb-2">
+                    학년 <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={selectedGrade}
+                    onChange={(e) => setSelectedGrade(Number(e.target.value))}
+                    className="w-full px-4 py-3 border-2 border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-lg bg-white"
+                  >
+                    {[1, 2, 3, 4, 5, 6].map(g => (
+                      <option key={g} value={g}>{g}학년</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-900 mb-2">
+                    반 <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={className}
+                    onChange={(e) => setClassName(e.target.value)}
+                    placeholder="예: 1반, 가반"
+                    className="w-full px-4 py-3 border-2 border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-lg"
+                    autoFocus
+                  />
+                </div>
               </div>
 
               {/* Student Names Input */}

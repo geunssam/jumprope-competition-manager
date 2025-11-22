@@ -5,6 +5,7 @@ import { Plus, Trash, CheckSquare, Square, Users, Trophy, ClipboardList, Setting
 import { MatrixRecordTable } from './MatrixRecordTable';
 import { CompetitionTimer } from './CompetitionTimer';
 import { CreateClassModal } from './CreateClassModal';
+import { ClassManagementModal } from './ClassManagementModal';
 import { MultiClassParticipantModal } from './MultiClassParticipantModal';
 import { MultiClassTeamCreationModal } from './MultiClassTeamCreationModal';
 import {
@@ -25,6 +26,7 @@ import {
   horizontalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { SortableEventCard } from './SortableEventCard';
+import { PracticeModeView } from './PracticeModeView';
 
 interface GradeViewProps {
   grade: number;
@@ -34,9 +36,11 @@ interface GradeViewProps {
   onUpdateClasses: (classes: ClassTeam[]) => void;
   onUpdateConfig: (config: GradeConfig) => void;
   onUpdateEvents: (events: CompetitionEvent[]) => void;
+  competitionId: string; // 🆕 추가
 }
 
-type TabType = 'MANAGEMENT' | 'EVENTS' | 'RECORDS' | 'RESULTS';
+type TabType = 'EVENTS' | 'RECORDS' | 'RESULTS';
+type ViewModeType = 'competition' | 'practice';
 type EventSubTab = 'INDIVIDUAL' | 'PAIR' | 'TEAM';
 
 export const GradeView: React.FC<GradeViewProps> = ({
@@ -47,9 +51,13 @@ export const GradeView: React.FC<GradeViewProps> = ({
   onUpdateClasses,
   onUpdateConfig,
   onUpdateEvents,
+  competitionId,
 }) => {
-  const [activeTab, setActiveTab] = useState<TabType>('MANAGEMENT');
+  const [viewMode, setViewMode] = useState<ViewModeType>('competition');
+  const [activeTab, setActiveTab] = useState<TabType>('EVENTS');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isClassManagementOpen, setIsClassManagementOpen] = useState(false);
+  const [allClasses, setAllClasses] = useState<ClassTeam[]>([]);
   const [activeEventTab, setActiveEventTab] = useState<EventSubTab>('INDIVIDUAL');
 
   // For Records Tab
@@ -70,6 +78,18 @@ export const GradeView: React.FC<GradeViewProps> = ({
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
+
+  // Load all classes when class management modal opens
+  useEffect(() => {
+    if (isClassManagementOpen && competitionId) {
+      const loadAllClasses = async () => {
+        const { getAllClasses } = await import('../services/firestore');
+        const allClassesData = await getAllClasses(competitionId);
+        setAllClasses(allClassesData);
+      };
+      loadAllClasses();
+    }
+  }, [isClassManagementOpen, competitionId]);
 
   // Filter classes for this grade
   const gradeClasses = useMemo(() =>
@@ -128,7 +148,7 @@ export const GradeView: React.FC<GradeViewProps> = ({
 
   // --- Handlers ---
 
-  const handleAddClass = useCallback((className: string, students: Student[]) => {
+  const handleAddClass = useCallback((grade: number, className: string, students: Student[]) => {
     const newClass: ClassTeam = {
       id: `cls_${Date.now()}`,
       grade,
@@ -139,13 +159,25 @@ export const GradeView: React.FC<GradeViewProps> = ({
 
     onUpdateClasses([...classes, newClass]);
     setIsCreateModalOpen(false);
-  }, [grade, classes, onUpdateClasses]);
+  }, [classes, onUpdateClasses]);
 
   const handleRemoveClass = (id: string) => {
     if (confirm('해당 학급을 삭제하시겠습니까? 점수 데이터도 함께 삭제됩니다.')) {
       onUpdateClasses(classes.filter(c => c.id !== id));
     }
   };
+
+  const handleDeleteClass = useCallback(async (classId: string) => {
+    const { deleteClass } = await import('../services/firestore');
+    await deleteClass(classId);
+    // onUpdateClasses will be triggered by real-time listener in App.tsx
+  }, []);
+
+  const handleUpdateStudents = useCallback(async (classId: string, students: Student[]) => {
+    const { updateClassStudents } = await import('../services/firestore');
+    await updateClassStudents(classId, students);
+    // onUpdateClasses will be triggered by real-time listener in App.tsx
+  }, []);
 
   const handleOpenEventModal = (event: CompetitionEvent) => {
     if (event.type === 'INDIVIDUAL') {
@@ -485,7 +517,6 @@ export const GradeView: React.FC<GradeViewProps> = ({
 
   const renderTabs = () => {
     const tabs: { id: TabType; label: string; icon: React.ElementType }[] = [
-      { id: 'MANAGEMENT', label: '학급/학생 관리', icon: Users },
       { id: 'EVENTS', label: '경기 종목 선정', icon: Settings2 },
       { id: 'RECORDS', label: '경기 기록 입력', icon: ClipboardList },
       { id: 'RESULTS', label: '경기 결과 종합', icon: Trophy },
@@ -919,18 +950,63 @@ export const GradeView: React.FC<GradeViewProps> = ({
     <div className="flex-1 bg-slate-50 h-full overflow-hidden flex flex-col">
       {/* Header with Tabs */}
       <header className="bg-white border-b border-slate-200 flex-shrink-0">
-        <div className="px-8 py-5">
+        <div className="px-8 py-5 flex items-center justify-between">
           <h2 className="text-2xl font-bold text-slate-900">{grade}학년 대회 관리</h2>
+
+          <div className="flex items-center gap-3">
+            {/* Class Management Button */}
+            <button
+              onClick={() => setIsClassManagementOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors shadow-sm"
+            >
+              <Users className="w-4 h-4" />
+              학급 관리
+            </button>
+
+            {/* Mode Toggle */}
+            <div className="flex items-center gap-2 bg-slate-100 rounded-lg p-1">
+              <button
+                onClick={() => setViewMode('practice')}
+                className={`px-4 py-2 rounded-md font-medium transition-all ${
+                  viewMode === 'practice'
+                    ? 'bg-white text-green-600 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                📝 연습 모드
+              </button>
+              <button
+                onClick={() => setViewMode('competition')}
+                className={`px-4 py-2 rounded-md font-medium transition-all ${
+                  viewMode === 'competition'
+                    ? 'bg-white text-indigo-600 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                🏆 대회 모드
+              </button>
+            </div>
+          </div>
         </div>
-        {renderTabs()}
+        {viewMode === 'competition' && renderTabs()}
       </header>
 
       {/* Main Content */}
       <div className="flex-1 overflow-auto bg-slate-50 scroll-smooth">
-        {activeTab === 'MANAGEMENT' && renderManagementTab()}
-        {activeTab === 'EVENTS' && renderEventsTab()}
-        {activeTab === 'RECORDS' && renderRecordsTab()}
-        {activeTab === 'RESULTS' && renderResultsTab()}
+        {viewMode === 'competition' ? (
+          <>
+            {activeTab === 'EVENTS' && renderEventsTab()}
+            {activeTab === 'RECORDS' && renderRecordsTab()}
+            {activeTab === 'RESULTS' && renderResultsTab()}
+          </>
+        ) : (
+          <PracticeModeView
+            competitionId={competitionId}
+            grade={grade}
+            events={events}
+            classes={gradeClasses}
+          />
+        )}
       </div>
 
       {/* Multi-Class Participant Selection Modal (INDIVIDUAL) */}
@@ -967,6 +1043,18 @@ export const GradeView: React.FC<GradeViewProps> = ({
           grade={grade}
           onSubmit={handleAddClass}
           onClose={() => setIsCreateModalOpen(false)}
+        />
+      )}
+
+      {/* Class Management Modal */}
+      {isClassManagementOpen && (
+        <ClassManagementModal
+          competitionId={competitionId}
+          allClasses={allClasses}
+          onClose={() => setIsClassManagementOpen(false)}
+          onAddClass={handleAddClass}
+          onDeleteClass={handleDeleteClass}
+          onUpdateStudents={handleUpdateStudents}
         />
       )}
     </div>
