@@ -1,5 +1,9 @@
-import React from 'react';
-import { Users, Settings, Trophy, ChevronLeft, ChevronRight } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Users, Settings, Trophy, ChevronLeft, ChevronRight, LogOut, Shield } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import PrivacyPolicyModal from './PrivacyPolicyModal';
+import { savePrivacyConsent } from '../services/firestore';
+import { PRIVACY_POLICY_VERSION } from '../constants/privacyPolicy';
 
 interface SidebarProps {
   currentGrade: number | null;
@@ -19,6 +23,56 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onToggleCollapse,
 }) => {
   const grades = [1, 2, 3, 4, 5, 6];
+  const { user, logout } = useAuth();
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
+
+  // 외부 클릭 시 메뉴 닫기
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
+        setIsProfileMenuOpen(false);
+      }
+    };
+
+    if (isProfileMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isProfileMenuOpen]);
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      setIsProfileMenuOpen(false);
+    } catch (error) {
+      console.error('로그아웃 실패:', error);
+      alert('로그아웃 중 오류가 발생했습니다.');
+    }
+  };
+
+  const handlePrivacyAgree = async (consentData: any) => {
+    if (!user) return;
+
+    try {
+      await savePrivacyConsent({
+        teacherId: user.uid,
+        teacherEmail: user.email || '',
+        version: consentData.version,
+        termsAgreed: consentData.termsAgreed,
+        dataCollectionAgreed: consentData.dataCollectionAgreed,
+        marketingAgreed: consentData.marketingAgreed,
+      });
+      setShowPrivacyModal(false);
+    } catch (error) {
+      console.error('동의 저장 실패:', error);
+      throw error;
+    }
+  };
 
   return (
     <div className={`${isCollapsed ? 'w-16' : 'w-64'} bg-white border-r border-slate-200 flex flex-col h-full flex-shrink-0 shadow-sm z-10 transition-all duration-300`}>
@@ -67,20 +121,83 @@ export const Sidebar: React.FC<SidebarProps> = ({
         ))}
       </div>
 
-      <div className={`${isCollapsed ? 'p-2' : 'p-4'} border-t border-slate-100`}>
-        <button
-          onClick={onSelectSettings}
-          className={`w-full flex items-center ${isCollapsed ? 'justify-center px-2' : 'gap-3 px-4'} py-3 rounded-lg text-sm font-medium transition-all ${
-            isSettingsActive
-              ? 'bg-slate-800 text-white shadow-md'
-              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-          }`}
-          title={isCollapsed ? '전체 설정' : ''}
-        >
-          <Settings className={`w-5 h-5 flex-shrink-0 ${isSettingsActive ? 'text-slate-300' : 'text-slate-500'}`} />
-          {!isCollapsed && <span>전체 설정 (종목 관리)</span>}
-        </button>
-      </div>
+      {/* 사용자 프로필 섹션 */}
+      {user && (
+        <div className={`${isCollapsed ? 'p-2' : 'p-4'} border-t border-slate-100 relative`} ref={profileMenuRef}>
+          <button
+            onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+            className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'} py-3 px-3 rounded-lg text-sm transition-all hover:bg-slate-50 group`}
+            title={isCollapsed ? user.displayName || user.email || '사용자' : ''}
+          >
+            {user.photoURL ? (
+              <img
+                src={user.photoURL}
+                alt="프로필"
+                className="w-8 h-8 rounded-full flex-shrink-0 border-2 border-slate-200 group-hover:border-indigo-300 transition-colors"
+              />
+            ) : (
+              <div className="w-8 h-8 rounded-full flex-shrink-0 bg-indigo-100 flex items-center justify-center">
+                <span className="text-sm font-semibold text-indigo-600">
+                  {user.displayName?.charAt(0) || user.email?.charAt(0) || 'U'}
+                </span>
+              </div>
+            )}
+            {!isCollapsed && (
+              <div className="flex-1 text-left min-w-0">
+                <p className="text-sm font-medium text-slate-800 truncate">
+                  {user.displayName || '사용자'}
+                </p>
+                <p className="text-xs text-slate-500 truncate">
+                  {user.email}
+                </p>
+              </div>
+            )}
+          </button>
+
+          {/* 드롭업 메뉴 */}
+          {isProfileMenuOpen && (
+            <div className={`absolute ${isCollapsed ? 'left-full ml-2 bottom-0' : 'left-4 right-4 bottom-full mb-2'} bg-white rounded-lg shadow-xl border border-slate-200 py-2 z-50 min-w-[200px]`}>
+              <button
+                onClick={() => {
+                  setIsProfileMenuOpen(false);
+                  onSelectSettings();
+                }}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+              >
+                <Settings className="w-4 h-4 text-slate-400" />
+                <span>종목 설정</span>
+              </button>
+              <div className="h-px bg-slate-100 my-1"></div>
+              <button
+                onClick={() => {
+                  setIsProfileMenuOpen(false);
+                  setShowPrivacyModal(true);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+              >
+                <Shield className="w-4 h-4 text-slate-400" />
+                <span>개인정보 처리방침</span>
+              </button>
+              <div className="h-px bg-slate-100 my-1"></div>
+              <button
+                onClick={handleLogout}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+              >
+                <LogOut className="w-4 h-4" />
+                <span>로그아웃</span>
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 개인정보 처리방침 모달 */}
+      <PrivacyPolicyModal
+        isOpen={showPrivacyModal}
+        onClose={() => setShowPrivacyModal(false)}
+        onAgree={handlePrivacyAgree}
+        canClose={true}
+      />
     </div>
   );
 };

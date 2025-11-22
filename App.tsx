@@ -3,6 +3,7 @@ import { Sidebar } from './components/Sidebar';
 import { SettingsView } from './components/SettingsView';
 import { GradeView } from './components/GradeView';
 import { LoginPage } from './components/LoginPage';
+import PrivacyConsentGuard from './components/PrivacyConsentGuard';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import {
   subscribeToEvents,
@@ -232,36 +233,38 @@ const AppContent: React.FC = () => {
   }
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden">
-      <Sidebar
-        currentGrade={currentView === ViewMode.GRADE ? currentGrade : null}
-        onSelectGrade={handleSelectGrade}
-        onSelectSettings={handleSelectSettings}
-        isSettingsActive={currentView === ViewMode.SETTINGS}
-        isCollapsed={isSidebarCollapsed}
-        onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-      />
+    <PrivacyConsentGuard>
+      <div className="flex h-screen bg-slate-50 overflow-hidden">
+        <Sidebar
+          currentGrade={currentView === ViewMode.GRADE ? currentGrade : null}
+          onSelectGrade={handleSelectGrade}
+          onSelectSettings={handleSelectSettings}
+          isSettingsActive={currentView === ViewMode.SETTINGS}
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+        />
 
-      <main className="flex-1 flex flex-col overflow-hidden relative">
-        {currentView === ViewMode.SETTINGS ? (
-          <SettingsView
-            events={events}
-            onUpdateEvents={handleUpdateEvents}
-          />
-        ) : (
-          <GradeView
-            key={currentGrade} // Force re-render on grade switch to clear local inputs if needed
-            grade={currentGrade}
-            classes={classes}
-            events={events}
-            gradeConfig={currentGradeConfig}
-            onUpdateClasses={handleUpdateClasses}
-            onUpdateConfig={handleUpdateGradeConfig}
-            onUpdateEvents={handleUpdateEvents}
-          />
-        )}
-      </main>
-    </div>
+        <main className="flex-1 flex flex-col overflow-hidden relative">
+          {currentView === ViewMode.SETTINGS ? (
+            <SettingsView
+              events={events}
+              onUpdateEvents={handleUpdateEvents}
+            />
+          ) : (
+            <GradeView
+              key={currentGrade} // Force re-render on grade switch to clear local inputs if needed
+              grade={currentGrade}
+              classes={classes}
+              events={events}
+              gradeConfig={currentGradeConfig}
+              onUpdateClasses={handleUpdateClasses}
+              onUpdateConfig={handleUpdateGradeConfig}
+              onUpdateEvents={handleUpdateEvents}
+            />
+          )}
+        </main>
+      </div>
+    </PrivacyConsentGuard>
   );
 };
 
