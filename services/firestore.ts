@@ -156,13 +156,14 @@ export const getGradeConfig = async (
 };
 
 // === 일괄 작업 ===
-export const batchUpdateClasses = async (classes: ClassTeam[]) => {
+export const batchUpdateClasses = async (competitionId: string, classes: ClassTeam[]) => {
   const batch = writeBatch(db);
 
   classes.forEach(cls => {
     const ref = doc(db, 'classes', cls.id);
     batch.set(ref, {
       ...cls,
+      competitionId,
       updatedAt: serverTimestamp()
     }, { merge: true });
   });

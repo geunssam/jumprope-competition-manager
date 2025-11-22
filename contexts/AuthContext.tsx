@@ -22,11 +22,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
+    console.log('🔐 AuthProvider 초기화 시작');
+    console.log('🔐 auth 객체:', auth);
+
+    // 타임아웃 안전장치: 5초 후에도 loading이 true면 강제로 false 설정
+    const timeoutId = setTimeout(() => {
+      console.warn('⚠️ Auth 초기화 타임아웃 (5초 경과)');
       setLoading(false);
-    });
-    return unsubscribe;
+    }, 5000);
+
+    try {
+      console.log('🔐 onAuthStateChanged 리스너 등록 시도');
+      const unsubscribe = onAuthStateChanged(auth, (user) => {
+        console.log('🔐 onAuthStateChanged 콜백 실행!', user ? '로그인됨' : '로그아웃됨');
+        clearTimeout(timeoutId);
+        setUser(user);
+        setLoading(false);
+      });
+
+      console.log('🔐 onAuthStateChanged 리스너 등록 완료');
+
+      return () => {
+        console.log('🔐 AuthProvider 정리');
+        clearTimeout(timeoutId);
+        unsubscribe();
+      };
+    } catch (error) {
+      console.error('❌ AuthProvider 에러:', error);
+      clearTimeout(timeoutId);
+      setLoading(false);
+      return () => {};
+    }
   }, []);
 
   const signInWithGoogle = async () => {

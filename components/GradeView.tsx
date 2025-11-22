@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { ClassTeam, CompetitionEvent, GradeConfig, Student, Team } from '../types';
 import { Button } from './Button';
 import { Plus, Trash, CheckSquare, Square, Users, Trophy, ClipboardList, Settings2, Medal, UserPlus, ChevronDown, ChevronUp, Check, AlertCircle, X, Copy } from 'lucide-react';
@@ -72,8 +72,8 @@ export const GradeView: React.FC<GradeViewProps> = ({
   );
 
   // Filter classes for this grade
-  const gradeClasses = useMemo(() => 
-    classes.filter(c => c.grade === grade), 
+  const gradeClasses = useMemo(() =>
+    classes.filter(c => c.grade === grade),
   [classes, grade]);
 
   // Get base selected events (without custom ordering)
@@ -128,7 +128,7 @@ export const GradeView: React.FC<GradeViewProps> = ({
 
   // --- Handlers ---
 
-  const handleAddClass = (className: string, students: Student[]) => {
+  const handleAddClass = useCallback((className: string, students: Student[]) => {
     const newClass: ClassTeam = {
       id: `cls_${Date.now()}`,
       grade,
@@ -139,7 +139,7 @@ export const GradeView: React.FC<GradeViewProps> = ({
 
     onUpdateClasses([...classes, newClass]);
     setIsCreateModalOpen(false);
-  };
+  }, [grade, classes, onUpdateClasses]);
 
   const handleRemoveClass = (id: string) => {
     if (confirm('해당 학급을 삭제하시겠습니까? 점수 데이터도 함께 삭제됩니다.')) {

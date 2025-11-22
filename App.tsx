@@ -44,51 +44,79 @@ const AppContent: React.FC = () => {
 
   // 1. 대회 초기화
   useEffect(() => {
-    if (!user) return;
+    console.log('🔄 대회 초기화 시작, user:', user);
+    if (!user) {
+      console.log('❌ User 없음, loading을 false로 설정');
+      setLoading(false);
+      return;
+    }
 
     const initCompetition = async () => {
       try {
+        console.log('⏳ setLoading(true)');
         setLoading(true);
 
         // 마이그레이션 확인
-        if (!hasMigratedData() && hasLocalStorageData()) {
+        const hasMigrated = hasMigratedData();
+        const hasLocal = hasLocalStorageData();
+        console.log('📦 마이그레이션 체크:', { hasMigrated, hasLocal });
+
+        if (!hasMigrated && hasLocal) {
+          console.log('⚠️ 마이그레이션 필요! confirm 창 표시');
           if (confirm('기존 데이터를 클라우드로 이전하시겠습니까?')) {
+            console.log('✅ 마이그레이션 시작');
             const compId = await migrateLocalStorageToFirestore(user.uid);
+            console.log('✅ 마이그레이션 완료, compId:', compId);
             setCurrentCompetitionId(compId);
             setLoading(false);
             return;
+          } else {
+            console.log('❌ 마이그레이션 취소됨');
+            // 마이그레이션을 건너뛰었다고 표시
+            localStorage.setItem('jr_migrated_to_firebase', 'true');
           }
         }
 
         // 기존 대회 조회
         const savedCompId = localStorage.getItem('jr_competition_id');
+        console.log('💾 저장된 대회 ID:', savedCompId);
+
         if (savedCompId) {
+          console.log('✅ 기존 대회 ID 사용:', savedCompId);
           setCurrentCompetitionId(savedCompId);
         } else {
+          console.log('🔍 기존 대회 검색 중...');
           const comps = await getMyCompetitions(user.uid);
+          console.log('📋 검색된 대회:', comps);
+
           if (comps.length > 0) {
+            console.log('✅ 첫 번째 대회 사용:', comps[0].id);
             setCurrentCompetitionId(comps[0].id);
             localStorage.setItem('jr_competition_id', comps[0].id);
           } else {
-            // 새 대회 생성 및 초기 종목 추가
+            console.log('🆕 새 대회 생성 중...');
             const newCompId = await createCompetition(user.uid, '줄넘기 대회');
+            console.log('✅ 새 대회 생성 완료:', newCompId);
 
             // 초기 종목 추가
+            console.log('📝 초기 종목 추가 중...');
             const batch = writeBatch(db);
             INITIAL_EVENTS.forEach(event => {
               const eventRef = doc(db, 'events', event.id);
               batch.set(eventRef, { ...event, competitionId: newCompId });
             });
             await batch.commit();
+            console.log('✅ 초기 종목 추가 완료');
 
             setCurrentCompetitionId(newCompId);
             localStorage.setItem('jr_competition_id', newCompId);
           }
         }
       } catch (err) {
-        console.error('Competition init error:', err);
+        console.error('❌ Competition init error:', err);
         setError('대회 초기화 중 오류가 발생했습니다.');
       } finally {
+        console.log('✅ setLoading(false)');
         setLoading(false);
       }
     };
@@ -155,7 +183,8 @@ const AppContent: React.FC = () => {
   };
 
   const handleUpdateClasses = async (updatedClasses: ClassTeam[]) => {
-    await batchUpdateClasses(updatedClasses);
+    if (!currentCompetitionId) return;
+    await batchUpdateClasses(currentCompetitionId, updatedClasses);
     // 실시간 리스너가 자동으로 업데이트
   };
 
