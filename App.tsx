@@ -46,7 +46,13 @@ const AppContent: React.FC = () => {
   // UI State
   const [currentView, setCurrentView] = useState<ViewMode>(ViewMode.GRADE);
   const [currentGrade, setCurrentGrade] = useState<number>(1);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
+  // 모바일/태블릿에서는 기본적으로 사이드바 접힘
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth < 1024;
+    }
+    return false;
+  });
 
   // 0. 캐시 버전 체크 (앱 시작 시 한 번만)
   useEffect(() => {
