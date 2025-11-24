@@ -6,14 +6,14 @@ export const LoginPage: React.FC = () => {
   const { signInWithGoogle } = useAuth();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
-        <div className="text-center mb-8">
-          <div className="inline-block bg-indigo-600 p-4 rounded-full mb-4">
-            <Trophy className="w-12 h-12 text-white" />
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center p-3 sm:p-4">
+      <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-6 sm:p-8">
+        <div className="text-center mb-6 sm:mb-8">
+          <div className="inline-block bg-indigo-600 p-3 sm:p-4 rounded-full mb-3 sm:mb-4">
+            <Trophy className="w-10 h-10 sm:w-12 sm:h-12 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">줄넘기 대회 매니저</h1>
-          <p className="text-slate-600">학급별 경기 기록을 관리하고 실시간으로 공유하세요</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 mb-2">줄넘기 대회 매니저</h1>
+          <p className="text-sm sm:text-base text-slate-600">학급별 경기 기록을 관리하고 실시간으로 공유하세요</p>
         </div>
 
         <button

@@ -633,21 +633,60 @@ export const GradeView: React.FC<GradeViewProps> = ({
     ];
 
     return (
-      <div className="flex border-b border-slate-200 bg-white px-6 sticky top-0 z-20 overflow-x-auto no-scrollbar">
-        {tabs.map((tab) => (
+      <div className="flex flex-wrap items-center justify-between border-b border-slate-200 bg-white px-4 md:px-6 sticky top-0 z-20 gap-2">
+        {/* 탭 버튼들 */}
+        <div className="flex overflow-x-auto no-scrollbar">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-2 px-4 md:px-6 py-3 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${
+                activeTab === tab.id
+                  ? 'border-indigo-600 text-indigo-700'
+                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+              }`}
+            >
+              <tab.icon className={`w-4 h-4 ${activeTab === tab.id ? 'text-indigo-600' : 'text-slate-400'}`} />
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* 우측 버튼들 */}
+        <div className="flex items-center gap-2 md:gap-3 py-2">
+          {/* 학급 관리 버튼 */}
           <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 px-6 py-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${
-              activeTab === tab.id
-                ? 'border-indigo-600 text-indigo-700'
-                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-            }`}
+            onClick={() => setIsClassManagementOpen(true)}
+            className="flex items-center gap-2 px-3 md:px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors shadow-sm text-sm"
           >
-            <tab.icon className={`w-4 h-4 ${activeTab === tab.id ? 'text-indigo-600' : 'text-slate-400'}`} />
-            {tab.label}
+            <Users className="w-4 h-4" />
+            <span className="hidden sm:inline">학급 관리</span>
           </button>
-        ))}
+
+          {/* 모드 토글 */}
+          <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
+            <button
+              onClick={() => setViewMode('practice')}
+              className={`px-2 md:px-3 py-1.5 rounded-md text-xs md:text-sm font-medium transition-all whitespace-nowrap ${
+                viewMode === 'practice'
+                  ? 'bg-white text-green-600 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              📝 연습
+            </button>
+            <button
+              onClick={() => setViewMode('competition')}
+              className={`px-2 md:px-3 py-1.5 rounded-md text-xs md:text-sm font-medium transition-all whitespace-nowrap ${
+                viewMode === 'competition'
+                  ? 'bg-white text-indigo-600 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              🏆 대회
+            </button>
+          </div>
+        </div>
       </div>
     );
   };
@@ -1207,50 +1246,8 @@ export const GradeView: React.FC<GradeViewProps> = ({
 
   return (
     <div className="flex-1 bg-slate-50 h-full overflow-hidden flex flex-col">
-      {/* Header with Tabs */}
-      <header className="bg-white border-b border-slate-200 flex-shrink-0">
-        <div className="px-8 py-5 flex items-center justify-between">
-          <div className="flex items-center gap-6">
-            <h2 className="text-2xl font-bold text-slate-900">{grade}학년 대회 관리</h2>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {/* Class Management Button */}
-            <button
-              onClick={() => setIsClassManagementOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors shadow-sm"
-            >
-              <Users className="w-4 h-4" />
-              학급 관리
-            </button>
-
-            {/* Mode Toggle */}
-            <div className="flex items-center gap-2 bg-slate-100 rounded-lg p-1">
-              <button
-                onClick={() => setViewMode('practice')}
-                className={`px-4 py-2 rounded-md font-medium transition-all ${
-                  viewMode === 'practice'
-                    ? 'bg-white text-green-600 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                📝 연습 모드
-              </button>
-              <button
-                onClick={() => setViewMode('competition')}
-                className={`px-4 py-2 rounded-md font-medium transition-all ${
-                  viewMode === 'competition'
-                    ? 'bg-white text-indigo-600 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                🏆 대회 모드
-              </button>
-            </div>
-          </div>
-        </div>
-        {viewMode === 'competition' && renderTabs()}
-      </header>
+      {/* Tabs with integrated buttons */}
+      {viewMode === 'competition' && renderTabs()}
 
       {/* Main Content */}
       <div className="flex-1 overflow-auto bg-slate-50 scroll-smooth">
@@ -1266,6 +1263,9 @@ export const GradeView: React.FC<GradeViewProps> = ({
             grade={grade}
             events={events}
             classes={gradeClasses}
+            onClassManagementClick={() => setIsClassManagementOpen(true)}
+            onModeToggle={setViewMode}
+            currentMode={viewMode}
           />
         )}
       </div>

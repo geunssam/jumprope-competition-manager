@@ -6,7 +6,7 @@ import {
   getNextSessionNumber,
   recalculateClassStats
 } from '../services/firestore';
-import { Calendar, Save, TrendingUp, BarChart3, ClipboardList } from 'lucide-react';
+import { Calendar, Save, TrendingUp, BarChart3, ClipboardList, Users } from 'lucide-react';
 import { CompetitionTimer } from './CompetitionTimer';
 import { StudentRecordModal } from './StudentRecordModal';
 import { RecordHistoryView } from './RecordHistoryView';
@@ -19,6 +19,9 @@ interface PracticeModeViewProps {
   events: CompetitionEvent[];
   classes: ClassTeam[];
   onStudentDetailClick?: (studentId: string) => void;
+  onClassManagementClick?: () => void;
+  onModeToggle?: (mode: 'practice' | 'competition') => void;
+  currentMode?: 'practice' | 'competition';
 }
 
 export const PracticeModeView: React.FC<PracticeModeViewProps> = ({
@@ -26,7 +29,10 @@ export const PracticeModeView: React.FC<PracticeModeViewProps> = ({
   grade,
   events,
   classes,
-  onStudentDetailClick
+  onStudentDetailClick,
+  onClassManagementClick,
+  onModeToggle,
+  currentMode = 'practice'
 }) => {
   // Date 객체로 날짜 관리
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -195,30 +201,73 @@ export const PracticeModeView: React.FC<PracticeModeViewProps> = ({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Tab Navigation */}
-      <div className="flex border-b border-slate-200 bg-white px-6">
-        <button
-          onClick={() => setActiveTab('input')}
-          className={`flex items-center gap-2 px-6 py-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${
-            activeTab === 'input'
-              ? 'border-green-600 text-green-700'
-              : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-          }`}
-        >
-          <TrendingUp className="w-4 h-4" />
-          기록 입력
-        </button>
-        <button
-          onClick={() => setActiveTab('history')}
-          className={`flex items-center gap-2 px-6 py-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${
-            activeTab === 'history'
-              ? 'border-green-600 text-green-700'
-              : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-          }`}
-        >
-          <ClipboardList className="w-4 h-4" />
-          기록 조회
-        </button>
+      {/* Tab Navigation with integrated buttons */}
+      <div className="flex flex-wrap items-center justify-between border-b border-slate-200 bg-white px-4 md:px-6 sticky top-0 z-20 gap-2">
+        {/* 탭 버튼들 */}
+        <div className="flex overflow-x-auto no-scrollbar">
+          <button
+            onClick={() => setActiveTab('input')}
+            className={`flex items-center gap-2 px-4 md:px-6 py-3 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${
+              activeTab === 'input'
+                ? 'border-green-600 text-green-700'
+                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+            }`}
+          >
+            <TrendingUp className="w-4 h-4" />
+            기록 입력
+          </button>
+          <button
+            onClick={() => setActiveTab('history')}
+            className={`flex items-center gap-2 px-4 md:px-6 py-3 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${
+              activeTab === 'history'
+                ? 'border-green-600 text-green-700'
+                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+            }`}
+          >
+            <ClipboardList className="w-4 h-4" />
+            기록 조회
+          </button>
+        </div>
+
+        {/* 우측 버튼들 */}
+        <div className="flex items-center gap-2 md:gap-3 py-2">
+          {/* 학급 관리 버튼 */}
+          {onClassManagementClick && (
+            <button
+              onClick={onClassManagementClick}
+              className="flex items-center gap-2 px-3 md:px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors shadow-sm text-sm"
+            >
+              <Users className="w-4 h-4" />
+              <span className="hidden sm:inline">학급 관리</span>
+            </button>
+          )}
+
+          {/* 모드 토글 */}
+          {onModeToggle && (
+            <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
+              <button
+                onClick={() => onModeToggle('practice')}
+                className={`px-2 md:px-3 py-1.5 rounded-md text-xs md:text-sm font-medium transition-all whitespace-nowrap ${
+                  currentMode === 'practice'
+                    ? 'bg-white text-green-600 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                📝 연습
+              </button>
+              <button
+                onClick={() => onModeToggle('competition')}
+                className={`px-2 md:px-3 py-1.5 rounded-md text-xs md:text-sm font-medium transition-all whitespace-nowrap ${
+                  currentMode === 'competition'
+                    ? 'bg-white text-indigo-600 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                🏆 대회
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Content */}

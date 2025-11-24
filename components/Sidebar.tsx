@@ -88,19 +88,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   return (
-    <div className={`${isCollapsed ? 'w-20' : 'w-64'} bg-white border-r border-slate-200 flex flex-col h-full flex-shrink-0 shadow-sm z-10 transition-all duration-300`}>
-      <div className={`${isCollapsed ? 'p-2' : 'p-4 md:p-6'} border-b border-slate-100 flex items-center justify-between gap-2 md:gap-3 relative flex-shrink-0`}>
-        <div className="flex items-center gap-2 md:gap-3 overflow-hidden min-w-0">
-          <div className="bg-indigo-600 p-1.5 md:p-2 rounded-lg flex-shrink-0">
-            <Trophy className="w-5 h-5 md:w-6 md:h-6 text-white" />
-          </div>
-          {!isCollapsed && (
-            <h1 className="font-bold text-lg md:text-xl text-slate-800 tracking-tight whitespace-nowrap truncate">줄넘기 대회</h1>
-          )}
+    <div className={`${isCollapsed ? 'w-20' : 'w-64'} bg-white border-r border-slate-200 flex flex-col h-screen flex-shrink-0 shadow-sm z-10 transition-all duration-300 overflow-hidden`}>
+      <div className={`${isCollapsed ? 'p-3' : 'p-3 md:p-4'} border-b border-slate-100 flex items-center justify-between gap-2 relative flex-shrink-0`}>
+        <div className="bg-indigo-600 p-1.5 md:p-2 rounded-lg flex-shrink-0">
+          <Trophy className="w-5 h-5 md:w-6 md:h-6 text-white" />
         </div>
+        {!isCollapsed && (
+          <h1 className="font-bold text-base md:text-lg text-slate-800 tracking-tight whitespace-nowrap truncate flex-1">줄넘기 대회</h1>
+        )}
         <button
           onClick={onToggleCollapse}
-          className="flex-shrink-0 p-1.5 rounded-md hover:bg-slate-100 active:bg-slate-200 text-slate-400 hover:text-slate-600 transition-colors touch-manipulation"
+          className={`flex-shrink-0 p-1.5 rounded-md hover:bg-slate-100 active:bg-slate-200 text-slate-400 hover:text-slate-600 transition-colors touch-manipulation ${isCollapsed ? 'ml-0' : '-ml-1'}`}
           title={isCollapsed ? '펼치기' : '접기'}
         >
           {isCollapsed ? (
@@ -111,7 +109,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto py-3 md:py-4 px-2 md:px-3 space-y-1 min-h-0">
+      <div className="flex-1 overflow-y-auto py-3 md:py-4 px-2 md:px-3 space-y-1 min-h-0 pb-0">
         {!isCollapsed && (
           <div className="px-3 mb-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">
             학년별 관리
@@ -142,10 +140,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* 사용자 프로필 섹션 */}
       {user && (
-        <div className={`${isCollapsed ? 'p-2' : 'p-3 md:p-4'} border-t border-slate-100 relative flex-shrink-0`} ref={profileMenuRef}>
+        <div className={`${isCollapsed ? 'p-2 pb-8' : 'p-3 md:p-4 pb-10 md:pb-14'} mt-auto border-t border-slate-100 relative flex-shrink-0 bg-white`} ref={profileMenuRef}>
           <button
             onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
-            className={`w-full flex items-center ${isCollapsed ? 'justify-center px-2' : 'gap-2 md:gap-3 px-3'} py-2.5 md:py-3 rounded-lg text-sm transition-all hover:bg-slate-50 active:bg-slate-100 group touch-manipulation min-h-[44px]`}
+            className={`w-full flex items-center ${isCollapsed ? 'justify-center px-2' : 'gap-2 md:gap-3 px-3'} py-2.5 md:py-3 rounded-lg text-sm transition-all hover:bg-slate-50 active:bg-slate-100 group touch-manipulation min-h-[50px]`}
             title={isCollapsed ? user.displayName || user.email || '사용자' : ''}
           >
             {user.photoURL ? (
