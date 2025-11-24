@@ -193,18 +193,25 @@ export const GradeView: React.FC<GradeViewProps> = ({
 
   // --- Handlers ---
 
-  const handleAddClass = useCallback((grade: number, className: string, students: Student[]) => {
-    const newClass: ClassTeam = {
-      id: `cls_${Date.now()}`,
-      grade,
-      name: className,
-      students: students,
-      results: {}
-    };
+  const handleAddClass = useCallback(async (grade: number, className: string, students: Student[]) => {
+    try {
+      const newClass: ClassTeam = {
+        id: `cls_${Date.now()}`,
+        grade,
+        name: className,
+        students: students,
+        results: {}
+      };
 
-    onUpdateClasses([...classes, newClass]);
-    setIsCreateModalOpen(false);
-  }, [classes, onUpdateClasses]);
+      const { createClass } = await import('../services/firestore');
+      await createClass(competitionId, newClass);
+      // onUpdateClasses will be triggered by real-time listener in App.tsx
+      setIsCreateModalOpen(false);
+    } catch (error) {
+      console.error('학급 생성 중 오류:', error);
+      alert('학급 생성에 실패했습니다. 다시 시도해주세요.');
+    }
+  }, [competitionId]);
 
   const handleRemoveClass = (id: string) => {
     if (confirm('해당 학급을 삭제하시겠습니까? 점수 데이터도 함께 삭제됩니다.')) {

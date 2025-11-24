@@ -114,13 +114,12 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
     setTimerState('ready');
     setIsFullscreen(true);
 
-    // 음원 재생 시점을 기록 (2초 후 running으로 변경할 때 사용)
-    startTimeRef.current = Date.now();
-    targetDurationRef.current = 30;
-
-    // 2초 후 타이머 시작
+    // 2초 후 타이머 시작 (startTime은 running 상태가 될 때 기록)
     readyTimeoutRef.current = setTimeout(() => {
       setTimerState('running');
+      // running 상태로 전환될 때 startTime 기록 (2초 ready 시간 제외)
+      startTimeRef.current = Date.now();
+      targetDurationRef.current = 30;
     }, 2000);
   };
 
@@ -133,13 +132,12 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
     setTimerState('ready');
     setIsFullscreen(true);
 
-    // 음원 재생 시점을 기록 (2초 후 running으로 변경할 때 사용)
-    startTimeRef.current = Date.now();
-    targetDurationRef.current = 60;
-
-    // 2초 후 타이머 시작
+    // 2초 후 타이머 시작 (startTime은 running 상태가 될 때 기록)
     readyTimeoutRef.current = setTimeout(() => {
       setTimerState('running');
+      // running 상태로 전환될 때 startTime 기록 (2초 ready 시간 제외)
+      startTimeRef.current = Date.now();
+      targetDurationRef.current = 60;
     }, 2000);
   };
 
