@@ -61,6 +61,26 @@ export const MultiClassTeamCreationModal: React.FC<MultiClassTeamCreationModalPr
     });
   };
 
+  const toggleAllStudents = (classId: string) => {
+    const classTeam = classes.find(c => c.id === classId);
+    if (!classTeam) return;
+
+    const currentSelected = selectedStudents[classId] || [];
+
+    // 모든 학생이 선택되어 있으면 전체 해제, 아니면 전체 선택
+    if (currentSelected.length === classTeam.students.length) {
+      setSelectedStudents(prev => ({
+        ...prev,
+        [classId]: []
+      }));
+    } else {
+      setSelectedStudents(prev => ({
+        ...prev,
+        [classId]: classTeam.students.map(s => s.id)
+      }));
+    }
+  };
+
   const createTeamFromSelection = (classId: string, memberIds: string[]) => {
     const classTeam = classes.find(c => c.id === classId);
     if (!classTeam) return;
@@ -265,14 +285,31 @@ export const MultiClassTeamCreationModal: React.FC<MultiClassTeamCreationModalPr
                       {/* Student Selection */}
                       <div>
                         <div className="flex items-center justify-between mb-2">
-                          <label className="text-sm font-bold text-slate-900">
-                            학생 선택
-                            {event.type === 'PAIR' && (
-                              <span className="ml-2 text-xs font-normal text-green-600">
-                                (2명씩 선택하면 자동 팀 생성)
-                              </span>
-                            )}
-                          </label>
+                          <div className="flex items-center gap-2">
+                            <label className="text-sm font-bold text-slate-900">
+                              학생 선택
+                              {event.type === 'PAIR' && (
+                                <span className="ml-2 text-xs font-normal text-green-600">
+                                  (2명씩 선택하면 자동 팀 생성)
+                                </span>
+                              )}
+                            </label>
+                            {/* 전체 선택/해제 버튼 */}
+                            <button
+                              onClick={() => toggleAllStudents(classTeam.id)}
+                              className={`text-xs px-2.5 py-1 rounded-md font-medium transition-colors ${
+                                selectedCount === classTeam.students.length
+                                  ? event.type === 'PAIR'
+                                    ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                                    : 'bg-red-100 text-red-700 hover:bg-red-200'
+                                  : event.type === 'PAIR'
+                                  ? 'bg-green-600 text-white hover:bg-green-700'
+                                  : 'bg-purple-600 text-white hover:bg-purple-700'
+                              }`}
+                            >
+                              {selectedCount === classTeam.students.length ? '전체 해제' : '전체 선택'}
+                            </button>
+                          </div>
                           {selectedCount > 0 && (
                             <span className="text-xs text-slate-500">
                               {selectedCount}명 선택됨

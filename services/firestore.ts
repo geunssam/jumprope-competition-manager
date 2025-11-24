@@ -149,6 +149,23 @@ export const subscribeToGradeClasses = (
   });
 };
 
+export const subscribeToAllClasses = (
+  competitionId: string,
+  callback: (classes: ClassTeam[]) => void
+): Unsubscribe => {
+  const q = query(
+    collection(db, 'classes'),
+    where('competitionId', '==', competitionId)
+  );
+  return onSnapshot(q, (snapshot) => {
+    const classes = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    } as ClassTeam));
+    callback(classes);
+  });
+};
+
 export const updateClassResults = async (
   classId: string,
   results: ClassTeam['results']

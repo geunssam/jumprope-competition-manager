@@ -35,6 +35,26 @@ export const MultiClassParticipantModal: React.FC<MultiClassParticipantModalProp
     });
   };
 
+  const toggleAllStudents = (classId: string) => {
+    const classTeam = classes.find(c => c.id === classId);
+    if (!classTeam) return;
+
+    const currentSelected = selectedStudents[classId] || [];
+
+    // 모든 학생이 선택되어 있으면 전체 해제, 아니면 전체 선택
+    if (currentSelected.length === classTeam.students.length) {
+      setSelectedStudents(prev => ({
+        ...prev,
+        [classId]: []
+      }));
+    } else {
+      setSelectedStudents(prev => ({
+        ...prev,
+        [classId]: classTeam.students.map(s => s.id)
+      }));
+    }
+  };
+
   const toggleStudent = (classId: string, studentId: string) => {
     setSelectedStudents(prev => {
       const classStudents = prev[classId] || [];
@@ -118,11 +138,11 @@ export const MultiClassParticipantModal: React.FC<MultiClassParticipantModalProp
                   className="border-2 border-slate-200 rounded-xl overflow-hidden"
                 >
                   {/* Class Header */}
-                  <button
-                    onClick={() => toggleClass(classTeam.id)}
-                    className="w-full bg-slate-50 hover:bg-slate-100 px-4 py-3 flex items-center justify-between transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
+                  <div className="w-full bg-slate-50 px-4 py-3 flex items-center justify-between">
+                    <button
+                      onClick={() => toggleClass(classTeam.id)}
+                      className="flex items-center gap-3 flex-1 hover:opacity-80 transition-opacity"
+                    >
                       <div className="font-bold text-lg text-slate-900">
                         {classTeam.name}
                       </div>
@@ -132,13 +152,37 @@ export const MultiClassParticipantModal: React.FC<MultiClassParticipantModalProp
                       <div className="px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-sm font-bold">
                         {selectedCount}명 선택
                       </div>
+                    </button>
+
+                    <div className="flex items-center gap-2">
+                      {/* 전체 선택/해제 버튼 */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleAllStudents(classTeam.id);
+                        }}
+                        className={`text-xs px-3 py-1.5 rounded-md font-medium transition-colors ${
+                          selectedCount === classTeam.students.length
+                            ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                            : 'bg-blue-600 text-white hover:bg-blue-700'
+                        }`}
+                      >
+                        {selectedCount === classTeam.students.length ? '전체 해제' : '전체 선택'}
+                      </button>
+
+                      {/* 접기/펼치기 버튼 */}
+                      <button
+                        onClick={() => toggleClass(classTeam.id)}
+                        className="p-1 hover:bg-slate-200 rounded transition-colors"
+                      >
+                        {isExpanded ? (
+                          <ChevronUp className="w-5 h-5 text-slate-400" />
+                        ) : (
+                          <ChevronDown className="w-5 h-5 text-slate-400" />
+                        )}
+                      </button>
                     </div>
-                    {isExpanded ? (
-                      <ChevronUp className="w-5 h-5 text-slate-400" />
-                    ) : (
-                      <ChevronDown className="w-5 h-5 text-slate-400" />
-                    )}
-                  </button>
+                  </div>
 
                   {/* Student Grid */}
                   {isExpanded && (

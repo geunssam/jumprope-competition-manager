@@ -90,16 +90,29 @@ export const GradeView: React.FC<GradeViewProps> = ({
     })
   );
 
-  // Load all classes when class management modal opens
+  // Subscribe to all classes when class management modal opens (실시간 업데이트)
   useEffect(() => {
-    if (isClassManagementOpen && competitionId) {
-      const loadAllClasses = async () => {
-        const { getAllClasses } = await import('../services/firestore');
-        const allClassesData = await getAllClasses(competitionId);
-        setAllClasses(allClassesData);
-      };
-      loadAllClasses();
+    if (!isClassManagementOpen || !competitionId) {
+      return;
     }
+
+    const setupSubscription = async () => {
+      const { subscribeToAllClasses } = await import('../services/firestore');
+      const unsubscribe = subscribeToAllClasses(competitionId, (allClassesData) => {
+        setAllClasses(allClassesData);
+      });
+
+      // Cleanup: 모달이 닫히거나 컴포넌트가 언마운트될 때 구독 해제
+      return unsubscribe;
+    };
+
+    const unsubscribePromise = setupSubscription();
+
+    return () => {
+      unsubscribePromise.then(unsubscribe => {
+        if (unsubscribe) unsubscribe();
+      });
+    };
   }, [isClassManagementOpen, competitionId]);
 
   // 기존 데이터를 날짜별 구조로 마이그레이션
@@ -383,6 +396,15 @@ export const GradeView: React.FC<GradeViewProps> = ({
 
     // If selecting, open unified modal for all classes
     if (!event) return;
+
+    // 학급이 없으면 경고
+    if (gradeClasses.length === 0) {
+      alert('먼저 학급을 등록해주세요.');
+      return;
+    }
+
+    // 종목 타입에 따라 적절한 모달 자동 오픈
+    handleOpenEventModal(event);
   };
 
   // Drag and Drop Handlers
