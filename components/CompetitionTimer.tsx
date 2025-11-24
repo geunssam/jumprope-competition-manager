@@ -1,7 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Timer, Play, Pause, RotateCcw, X, Music } from 'lucide-react';
+import { Timer, Play, Pause, RotateCcw, X, Music, Calendar } from 'lucide-react';
 
-export const CompetitionTimer: React.FC = () => {
+interface CompetitionTimerProps {
+  selectedDate: string;
+  onDateChange: (date: string) => void;
+}
+
+export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
+  selectedDate,
+  onDateChange
+}) => {
   const [minutes, setMinutes] = useState<number>(0);
   const [seconds, setSeconds] = useState<number>(30);
   const [remainingSeconds, setRemainingSeconds] = useState<number>(30);
@@ -10,6 +18,8 @@ export const CompetitionTimer: React.FC = () => {
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const readyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const startTimeRef = useRef<number | null>(null);
+  const targetDurationRef = useRef<number>(0);
 
   // 총 초 계산
   const totalSeconds = minutes * 60 + seconds;
@@ -129,11 +139,15 @@ export const CompetitionTimer: React.FC = () => {
   const pauseTimer = () => {
     setTimerState('paused');
     stopAudio(); // 음원도 정지
+    // 현재 남은 시간을 remainingSeconds에 저장 (이미 state에 있음)
+    startTimeRef.current = null; // 시작 시간 초기화
   };
 
   // 타이머 재개
   const resumeTimer = () => {
+    // remainingSeconds에서 다시 시작
     setTimerState('running');
+    startTimeRef.current = null; // 다음 useEffect에서 새로 설정됨
     // 음원은 재개하지 않음 (싱크 어려움)
   };
 
@@ -143,6 +157,8 @@ export const CompetitionTimer: React.FC = () => {
     setRemainingSeconds(totalSeconds);
     setIsFullscreen(false);
     stopAudio();
+    startTimeRef.current = null;
+    targetDurationRef.current = 0;
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
@@ -159,6 +175,7 @@ export const CompetitionTimer: React.FC = () => {
     if (timerState === 'running' || timerState === 'ready') {
       setTimerState('paused');
       stopAudio();
+      startTimeRef.current = null;
     }
     if (readyTimeoutRef.current) {
       clearTimeout(readyTimeoutRef.current);
@@ -173,38 +190,54 @@ export const CompetitionTimer: React.FC = () => {
     }
   }, [totalSeconds, timerState]);
 
-  // 카운트다운 로직
+  // 카운트다운 로직 (정확한 시간 기반)
   useEffect(() => {
     if (timerState === 'running') {
+      // 타이머 시작 시간 기록
+      if (startTimeRef.current === null) {
+        startTimeRef.current = Date.now();
+        targetDurationRef.current = remainingSeconds;
+      }
+
       intervalRef.current = setInterval(() => {
-        setRemainingSeconds((prev) => {
-          if (prev <= 1) {
-            // 타이머 종료
-            setTimerState('finished');
-            if (intervalRef.current) {
-              clearInterval(intervalRef.current);
-              intervalRef.current = null;
-            }
+        if (startTimeRef.current === null) return;
 
-            // 진동 (모바일)
-            if (navigator.vibrate) {
-              navigator.vibrate([200, 100, 200]);
-            }
+        // 실제 경과 시간 계산 (밀리초 → 초)
+        const elapsedSeconds = Math.floor((Date.now() - startTimeRef.current) / 1000);
 
-            // 2초 후 자동으로 컴팩트 모드로 복귀
-            setTimeout(() => {
-              setIsFullscreen(false);
-            }, 2000);
+        // 남은 시간 = 목표 시간 - 경과 시간
+        const remaining = Math.max(0, targetDurationRef.current - elapsedSeconds);
 
-            return 0;
+        setRemainingSeconds(remaining);
+
+        if (remaining === 0) {
+          // 타이머 종료
+          setTimerState('finished');
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
           }
-          return prev - 1;
-        });
-      }, 1000);
+          startTimeRef.current = null;
+
+          // 진동 (모바일)
+          if (navigator.vibrate) {
+            navigator.vibrate([200, 100, 200]);
+          }
+
+          // 2초 후 자동으로 컴팩트 모드로 복귀
+          setTimeout(() => {
+            setIsFullscreen(false);
+          }, 2000);
+        }
+      }, 100); // 100ms마다 체크하여 더 정확한 표시
     } else {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
+      }
+      // paused 상태일 때는 startTime을 유지하지 않음
+      if (timerState === 'paused') {
+        startTimeRef.current = null;
       }
     }
 
@@ -214,19 +247,35 @@ export const CompetitionTimer: React.FC = () => {
         intervalRef.current = null;
       }
     };
-  }, [timerState]);
+  }, [timerState, remainingSeconds]);
 
   return (
     <>
       {/* 컴팩트 모드 */}
       {!isFullscreen && (
-        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-3 mb-6 shadow-sm border border-blue-100">
-          <div className="flex items-center justify-between gap-4">
-            {/* 타이머 아이콘과 제목 */}
-            <div className="flex items-center gap-2">
-              <Timer className="w-4 h-4 text-indigo-600" />
-              <h3 className="text-xs font-bold text-slate-900">타이머</h3>
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 mb-6 shadow-sm border border-blue-100">
+          <div className="grid grid-cols-10 gap-4 items-center">
+            {/* 날짜 선택기 영역 - 20% (2 cols) */}
+            <div className="col-span-2 flex flex-col gap-2">
+              <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-indigo-600" />
+                경기 날짜
+              </label>
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => onDateChange(e.target.value)}
+                className="px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+              />
             </div>
+
+            {/* 타이머 영역 - 80% (8 cols) */}
+            <div className="col-span-8 flex items-center justify-between gap-4">
+              {/* 타이머 아이콘과 제목 */}
+              <div className="flex items-center gap-2">
+                <Timer className="w-4 h-4 text-indigo-600" />
+                <h3 className="text-xs font-bold text-slate-900">타이머</h3>
+              </div>
 
             {/* 시간 조절 영역 */}
             <div className="flex items-center gap-1.5">
@@ -320,6 +369,7 @@ export const CompetitionTimer: React.FC = () => {
                 <Music className="w-3 h-3" />
                 60초
               </button>
+            </div>
             </div>
           </div>
         </div>

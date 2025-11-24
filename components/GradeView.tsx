@@ -28,6 +28,7 @@ import {
 import { SortableEventCard } from './SortableEventCard';
 import { PracticeModeView } from './PracticeModeView';
 import { StudentRecordModal } from './StudentRecordModal';
+import { RecordHistoryView } from './RecordHistoryView';
 
 interface GradeViewProps {
   grade: number;
@@ -68,6 +69,7 @@ export const GradeView: React.FC<GradeViewProps> = ({
 
   // For Records Tab
   const [selectedRecordEventId, setSelectedRecordEventId] = useState<string | null>(null);
+  const [recordsSubTab, setRecordsSubTab] = useState<'input' | 'history'>('input');
 
   // For Multi-Class Participant/Team Management
   const [multiClassParticipantModalEvent, setMultiClassParticipantModalEvent] = useState<CompetitionEvent | null>(null);
@@ -896,7 +898,7 @@ export const GradeView: React.FC<GradeViewProps> = ({
       );
     }
 
-    if (activeEvents.length === 0) {
+    if (activeEvents.length === 0 && recordsSubTab === 'input') {
       return (
         <div className="flex-1 flex flex-col items-center justify-center p-12">
           <Settings2 className="w-12 h-12 text-slate-300 mb-4" />
@@ -910,29 +912,76 @@ export const GradeView: React.FC<GradeViewProps> = ({
 
     return (
       <div className="flex flex-col h-full">
-        {/* Timer Area - Fixed at top */}
-        <div className="flex-shrink-0 p-6 bg-slate-50 border-b border-slate-200">
-          <CompetitionTimer />
+        {/* Sub Tab Navigation */}
+        <div className="flex border-b border-slate-200 bg-white px-6">
+          <button
+            onClick={() => setRecordsSubTab('input')}
+            className={`flex items-center gap-2 px-6 py-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${
+              recordsSubTab === 'input'
+                ? 'border-indigo-600 text-indigo-700'
+                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+            }`}
+          >
+            <Trophy className="w-4 h-4" />
+            점수 입력
+          </button>
+          <button
+            onClick={() => setRecordsSubTab('history')}
+            className={`flex items-center gap-2 px-6 py-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${
+              recordsSubTab === 'history'
+                ? 'border-indigo-600 text-indigo-700'
+                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+            }`}
+          >
+            <ClipboardList className="w-4 h-4" />
+            기록 조회
+          </button>
         </div>
 
-        {/* Scoreboard + Matrix Area - Independent scroll */}
-        <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
-          <div className="max-w-full mx-auto">
-            <MatrixRecordTable
+        {/* Content */}
+        {recordsSubTab === 'input' ? (
+          <>
+            {/* Timer Area - Fixed at top */}
+            <div className="flex-shrink-0 p-6 bg-slate-50 border-b border-slate-200">
+              <CompetitionTimer
+                selectedDate={selectedDate}
+                onDateChange={setSelectedDate}
+              />
+            </div>
+
+            {/* Scoreboard + Matrix Area - Independent scroll */}
+            <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
+              <div className="max-w-full mx-auto">
+                <MatrixRecordTable
+                  classes={gradeClasses}
+                  activeEvents={activeEvents}
+                  onUpdateClasses={onUpdateClasses}
+                  selectedDate={selectedDate}
+                  competitionId={competitionId}
+                  grade={grade}
+                  onEditParticipants={(eventId, classId) => {
+                    const event = events.find(e => e.id === eventId);
+                    if (event && event.type === 'INDIVIDUAL') {
+                      setMultiClassParticipantModalEvent(event);
+                    } else if (event && (event.type === 'PAIR' || event.type === 'TEAM')) {
+                      setMultiClassTeamModalEvent(event);
+                    }
+                  }}
+                />
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 overflow-auto">
+            <RecordHistoryView
+              competitionId={competitionId}
+              grade={grade}
+              events={events}
               classes={gradeClasses}
-              activeEvents={activeEvents}
-              onUpdateClasses={onUpdateClasses}
-              onEditParticipants={(eventId, classId) => {
-                const event = events.find(e => e.id === eventId);
-                if (event && event.type === 'INDIVIDUAL') {
-                  setMultiClassParticipantModalEvent(event);
-                } else if (event && (event.type === 'PAIR' || event.type === 'TEAM')) {
-                  setMultiClassTeamModalEvent(event);
-                }
-              }}
+              mode="competition"
             />
           </div>
-        </div>
+        )}
       </div>
     );
   };
@@ -1037,19 +1086,6 @@ export const GradeView: React.FC<GradeViewProps> = ({
         <div className="px-8 py-5 flex items-center justify-between">
           <div className="flex items-center gap-6">
             <h2 className="text-2xl font-bold text-slate-900">{grade}학년 대회 관리</h2>
-
-            {/* 날짜 선택기 */}
-            {viewMode === 'competition' && (
-              <div className="flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-lg border border-slate-200">
-                <label className="text-sm font-bold text-slate-700 whitespace-nowrap">경기 날짜:</label>
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  className="px-2 py-1 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
-                />
-              </div>
-            )}
           </div>
 
           <div className="flex items-center gap-3">

@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
 import { ClassTeam, CompetitionEvent } from '../types';
-import { ChevronDown, ChevronRight, Edit3 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Edit3, Save } from 'lucide-react';
+import { saveCompetitionResults } from '../services/firestore';
 
 interface MatrixRecordTableProps {
   classes: ClassTeam[];
   activeEvents: CompetitionEvent[];
   onUpdateClasses: (classes: ClassTeam[]) => void;
   onEditParticipants?: (eventId: string, classId: string) => void;
+  selectedDate: string; // 사용자가 선택한 경기 날짜
+  competitionId: string; // Firestore에서 최신 데이터 가져오기 위해 필요
+  grade: number; // Firestore에서 최신 데이터 가져오기 위해 필요
 }
 
 export const MatrixRecordTable: React.FC<MatrixRecordTableProps> = ({
@@ -14,11 +18,18 @@ export const MatrixRecordTable: React.FC<MatrixRecordTableProps> = ({
   activeEvents,
   onUpdateClasses,
   onEditParticipants,
+  selectedDate,
+  competitionId,
+  grade,
 }) => {
   // 종목별 접기/펼치기 상태 (기본값: 모두 접힌 상태)
   const [collapsedEvents, setCollapsedEvents] = useState<Set<string>>(
     new Set(activeEvents.map(e => e.id))
   );
+
+  // 저장 상태
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
   // 각 학급별 총점 계산
   const getClassTotalScore = (classTeam: ClassTeam) => {
@@ -46,6 +57,47 @@ export const MatrixRecordTable: React.FC<MatrixRecordTableProps> = ({
     return !collapsedEvents.has(eventId);
   };
 
+  // 저장 핸들러
+  const handleSave = async () => {
+    console.log('\n=== 경기 기록 저장 시작 ===');
+    console.log('📅 선택된 날짜:', selectedDate);
+    console.log('📦 저장할 학급 데이터:', classes.map(c => ({
+      id: c.id,
+      name: c.name,
+      resultsCount: Object.keys(c.results || {}).length,
+      results: c.results
+    })));
+
+    setSaving(true);
+    setSaveMessage(null);
+    try {
+      // 1. Firestore에 저장
+      await saveCompetitionResults(classes);
+      console.log('✅ saveCompetitionResults 완료');
+
+      // 2. Firestore에서 최신 데이터 다시 가져오기
+      console.log('🔄 Firestore에서 최신 데이터 가져오는 중...');
+      const { getGradeClasses } = await import('../services/firestore');
+      const updatedClasses = await getGradeClasses(competitionId, grade);
+      console.log('✅ 최신 데이터 가져오기 완료:', updatedClasses.length, '개 학급');
+
+      // 3. 부모 컴포넌트의 상태를 Firestore의 최신 데이터로 업데이트
+      console.log('🔄 부모 컴포넌트 상태 업데이트 중...');
+      onUpdateClasses(updatedClasses);
+      console.log('✅ 부모 컴포넌트 상태 업데이트 완료');
+
+      setSaveMessage('✅ 경기 기록이 저장되었습니다!');
+      setTimeout(() => setSaveMessage(null), 3000);
+    } catch (error) {
+      console.error('❌ 저장 실패:', error);
+      setSaveMessage('❌ 저장에 실패했습니다.');
+      setTimeout(() => setSaveMessage(null), 3000);
+    } finally {
+      setSaving(false);
+      console.log('=== 경기 기록 저장 종료 ===\n');
+    }
+  };
+
   const handleStudentScoreChange = (classId: string, eventId: string, studentId: string, score: number) => {
     const updatedClasses = classes.map(c => {
       if (c.id !== classId) return c;
@@ -66,7 +118,8 @@ export const MatrixRecordTable: React.FC<MatrixRecordTableProps> = ({
           [eventId]: {
             ...currentResult,
             studentScores: newScores,
-            score: totalScore
+            score: totalScore,
+            date: selectedDate // 사용자가 선택한 날짜 사용
           }
         }
       };
@@ -89,7 +142,12 @@ export const MatrixRecordTable: React.FC<MatrixRecordTableProps> = ({
         ...c,
         results: {
           ...c.results,
-          [eventId]: { ...res, teams: updatedTeams, score: totalScore }
+          [eventId]: {
+            ...res,
+            teams: updatedTeams,
+            score: totalScore,
+            date: selectedDate // 사용자가 선택한 날짜 사용
+          }
         }
       };
     });
@@ -485,6 +543,25 @@ export const MatrixRecordTable: React.FC<MatrixRecordTableProps> = ({
           })}
         </tbody>
       </table>
+
+      {/* 저장 버튼 - Sticky Footer */}
+      <div className="sticky bottom-0 left-0 right-0 bg-white border-t-2 border-indigo-200 px-6 py-4 flex items-center justify-between shadow-lg">
+        <div className="flex-1">
+          {saveMessage && (
+            <p className={`text-sm font-medium ${saveMessage.startsWith('✅') ? 'text-green-600' : 'text-red-600'}`}>
+              {saveMessage}
+            </p>
+          )}
+        </div>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-md"
+        >
+          <Save className="w-5 h-5" />
+          {saving ? '저장 중...' : '경기 기록 저장'}
+        </button>
+      </div>
     </div>
   );
 };

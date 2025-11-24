@@ -6,9 +6,10 @@ import {
   getNextSessionNumber,
   recalculateClassStats
 } from '../services/firestore';
-import { Calendar, Save, TrendingUp, BarChart3 } from 'lucide-react';
+import { Calendar, Save, TrendingUp, BarChart3, ClipboardList } from 'lucide-react';
 import { CompetitionTimer } from './CompetitionTimer';
 import { StudentRecordModal } from './StudentRecordModal';
+import { RecordHistoryView } from './RecordHistoryView';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 
@@ -44,6 +45,7 @@ export const PracticeModeView: React.FC<PracticeModeViewProps> = ({
   const [selectedClassId, setSelectedClassId] = useState<string>(classes[0]?.id || '');
   const [selectedEventId, setSelectedEventId] = useState<string>(events[0]?.id || '');
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'input' | 'history'>('input');
 
   // 선택된 학급
   const selectedClass = classes.find(c => c.id === selectedClassId);
@@ -192,12 +194,42 @@ export const PracticeModeView: React.FC<PracticeModeViewProps> = ({
   }
 
   return (
-    <div className="space-y-6">
-      {/* 타이머 */}
-      <CompetitionTimer />
+    <div className="flex flex-col h-full">
+      {/* Tab Navigation */}
+      <div className="flex border-b border-slate-200 bg-white px-6">
+        <button
+          onClick={() => setActiveTab('input')}
+          className={`flex items-center gap-2 px-6 py-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${
+            activeTab === 'input'
+              ? 'border-green-600 text-green-700'
+              : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+          }`}
+        >
+          <TrendingUp className="w-4 h-4" />
+          기록 입력
+        </button>
+        <button
+          onClick={() => setActiveTab('history')}
+          className={`flex items-center gap-2 px-6 py-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${
+            activeTab === 'history'
+              ? 'border-green-600 text-green-700'
+              : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+          }`}
+        >
+          <ClipboardList className="w-4 h-4" />
+          기록 조회
+        </button>
+      </div>
 
-      {/* 날짜 및 세션 선택 */}
-      <div className="bg-white p-4 rounded-lg shadow-md">
+      {/* Content */}
+      <div className="flex-1 overflow-auto">
+        {activeTab === 'input' ? (
+          <div className="space-y-6 p-6">
+            {/* 타이머 */}
+            <CompetitionTimer />
+
+            {/* 날짜 및 세션 선택 */}
+            <div className="bg-white p-4 rounded-lg shadow-md">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-gray-700 whitespace-nowrap">날짜</span>
@@ -307,6 +339,17 @@ export const PracticeModeView: React.FC<PracticeModeViewProps> = ({
           </div>
         </div>
       )}
+          </div>
+        ) : (
+          <RecordHistoryView
+            competitionId={competitionId}
+            grade={grade}
+            events={events}
+            classes={classes}
+            mode="practice"
+          />
+        )}
+      </div>
 
       {/* 학생 상세 기록 모달 */}
       {selectedStudentId && selectedClass && (
