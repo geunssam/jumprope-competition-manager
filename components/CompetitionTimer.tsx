@@ -114,6 +114,10 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
     setTimerState('ready');
     setIsFullscreen(true);
 
+    // 음원 재생 시점을 기록 (2초 후 running으로 변경할 때 사용)
+    startTimeRef.current = Date.now();
+    targetDurationRef.current = 30;
+
     // 2초 후 타이머 시작
     readyTimeoutRef.current = setTimeout(() => {
       setTimerState('running');
@@ -128,6 +132,10 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
     playAudio('/sounds/60sec.mp3');
     setTimerState('ready');
     setIsFullscreen(true);
+
+    // 음원 재생 시점을 기록 (2초 후 running으로 변경할 때 사용)
+    startTimeRef.current = Date.now();
+    targetDurationRef.current = 60;
 
     // 2초 후 타이머 시작
     readyTimeoutRef.current = setTimeout(() => {
@@ -193,7 +201,8 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
   // 카운트다운 로직 (정확한 시간 기반)
   useEffect(() => {
     if (timerState === 'running') {
-      // 타이머 시작 시간 기록
+      // 음원 프리셋에서 이미 startTime 설정됨
+      // 수동 시작인 경우에만 새로 설정
       if (startTimeRef.current === null) {
         startTimeRef.current = Date.now();
         targetDurationRef.current = remainingSeconds;
@@ -247,7 +256,7 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
         intervalRef.current = null;
       }
     };
-  }, [timerState, remainingSeconds]);
+  }, [timerState]); // remainingSeconds 의존성 제거 - interval 재생성 방지
 
   return (
     <>
