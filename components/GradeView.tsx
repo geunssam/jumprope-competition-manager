@@ -38,7 +38,8 @@ interface GradeViewProps {
   onUpdateClasses: (classes: ClassTeam[]) => void;
   onUpdateConfig: (config: GradeConfig) => void;
   onUpdateEvents: (events: CompetitionEvent[]) => void;
-  competitionId: string; // 🆕 추가
+  competitionId: string;
+  userId: string; // 🆕 추가
 }
 
 type TabType = 'EVENTS' | 'RECORDS' | 'RESULTS';
@@ -54,6 +55,7 @@ export const GradeView: React.FC<GradeViewProps> = ({
   onUpdateConfig,
   onUpdateEvents,
   competitionId,
+  userId,
 }) => {
   const [viewMode, setViewMode] = useState<ViewModeType>('practice');
   const [activeTab, setActiveTab] = useState<TabType>('EVENTS');
@@ -98,7 +100,7 @@ export const GradeView: React.FC<GradeViewProps> = ({
 
     const setupSubscription = async () => {
       const { subscribeToAllClasses } = await import('../services/firestore');
-      const unsubscribe = subscribeToAllClasses(competitionId, (allClassesData) => {
+      const unsubscribe = subscribeToAllClasses(userId, competitionId, (allClassesData) => {
         setAllClasses(allClassesData);
       });
 
@@ -217,14 +219,14 @@ export const GradeView: React.FC<GradeViewProps> = ({
       };
 
       const { createClass } = await import('../services/firestore');
-      await createClass(competitionId, newClass);
+      await createClass(userId, competitionId, newClass);
       // onUpdateClasses will be triggered by real-time listener in App.tsx
       setIsCreateModalOpen(false);
     } catch (error) {
       console.error('학급 생성 중 오류:', error);
       alert('학급 생성에 실패했습니다. 다시 시도해주세요.');
     }
-  }, [competitionId]);
+  }, [userId, competitionId]);
 
   const handleRemoveClass = (id: string) => {
     if (confirm('해당 학급을 삭제하시겠습니까? 점수 데이터도 함께 삭제됩니다.')) {
@@ -235,19 +237,19 @@ export const GradeView: React.FC<GradeViewProps> = ({
   const handleDeleteClass = useCallback(async (classId: string) => {
     try {
       const { deleteClass } = await import('../services/firestore');
-      await deleteClass(classId);
+      await deleteClass(userId, classId);
       // onUpdateClasses will be triggered by real-time listener in App.tsx
     } catch (error) {
       console.error('학급 삭제 중 오류:', error);
       alert('학급 삭제에 실패했습니다. 다시 시도해주세요.');
     }
-  }, []);
+  }, [userId]);
 
   const handleUpdateStudents = useCallback(async (classId: string, students: Student[]) => {
     const { updateClassStudents } = await import('../services/firestore');
-    await updateClassStudents(classId, students);
+    await updateClassStudents(userId, classId, students);
     // onUpdateClasses will be triggered by real-time listener in App.tsx
-  }, []);
+  }, [userId]);
 
   const handleOpenEventModal = (event: CompetitionEvent) => {
     if (event.type === 'INDIVIDUAL') {
@@ -1022,91 +1024,181 @@ export const GradeView: React.FC<GradeViewProps> = ({
 
   const renderResultsTab = () => {
     const sortedClasses = [...gradeClasses].sort((a, b) => calculateTotalScore(b) - calculateTotalScore(a));
+    const top3 = sortedClasses.slice(0, 3);
+    const rest = sortedClasses.slice(3);
+
+    // 포디움 렌더링 함수
+    const renderPodiumCard = (cls: ClassTeam, rank: number) => {
+      const totalScore = calculateTotalScore(cls);
+      const podiumHeight = rank === 1 ? 'h-96' : rank === 2 ? 'h-80' : 'h-72';
+      const medalColor = rank === 1 ? 'from-yellow-400 to-yellow-600' :
+                         rank === 2 ? 'from-slate-300 to-slate-500' :
+                         'from-orange-400 to-orange-600';
+      const bgColor = rank === 1 ? 'from-yellow-50 to-yellow-100' :
+                      rank === 2 ? 'from-slate-50 to-slate-100' :
+                      'from-orange-50 to-orange-100';
+
+      return (
+        <div className="flex flex-col items-center flex-1">
+          {/* 메달 */}
+          <div className={`w-24 h-24 rounded-full bg-gradient-to-br ${medalColor} shadow-2xl flex items-center justify-center mb-4 relative transform hover:scale-110 transition-transform`}>
+            <span className="text-5xl">
+              {rank === 1 ? '🥇' : rank === 2 ? '🥈' : '🥉'}
+            </span>
+            <div className={`absolute -bottom-2 w-16 h-8 bg-gradient-to-br ${medalColor} opacity-30 blur-xl rounded-full`}></div>
+          </div>
+
+          {/* 순위 배지 */}
+          <div className={`text-2xl font-black mb-2 ${
+            rank === 1 ? 'text-yellow-600' :
+            rank === 2 ? 'text-slate-600' :
+            'text-orange-600'
+          }`}>
+            {rank}등
+          </div>
+
+          {/* 포디움 */}
+          <div className={`${podiumHeight} w-full bg-gradient-to-b ${bgColor} rounded-t-2xl shadow-xl border-4 ${
+            rank === 1 ? 'border-yellow-400' :
+            rank === 2 ? 'border-slate-300' :
+            'border-orange-400'
+          } p-6 flex flex-col justify-between transition-all hover:shadow-2xl`}>
+            {/* 학급명 */}
+            <div className="text-center">
+              <h3 className={`text-2xl font-black mb-2 ${
+                rank === 1 ? 'text-yellow-900' :
+                rank === 2 ? 'text-slate-800' :
+                'text-orange-900'
+              }`}>
+                {cls.name}
+              </h3>
+              <p className="text-sm text-slate-600">
+                재적 {cls.students.length}명
+              </p>
+            </div>
+
+            {/* 총점 */}
+            <div className="text-center">
+              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+                Total Score
+              </div>
+              <div className={`text-5xl font-black tracking-tight ${
+                rank === 1 ? 'text-yellow-700' :
+                rank === 2 ? 'text-slate-700' :
+                'text-orange-700'
+              }`}>
+                {totalScore}
+              </div>
+              <div className="text-xs text-slate-500 mt-1">점</div>
+            </div>
+
+            {/* 종목별 점수 미리보기 */}
+            <div className="mt-4 space-y-1.5 overflow-hidden">
+              {activeEvents.slice(0, 3).map(evt => {
+                const score = cls.results[evt.id]?.score || 0;
+                return (
+                  <div key={evt.id} className="flex justify-between gap-2 text-xs">
+                    <span className="text-slate-600 truncate min-w-0 flex-1">{evt.name}</span>
+                    <span className="font-bold text-slate-800 flex-shrink-0">{score}점</span>
+                  </div>
+                );
+              })}
+              {activeEvents.length > 3 && (
+                <div className="text-center text-[10px] text-slate-400 pt-1">
+                  +{activeEvents.length - 3}개 종목
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    };
 
     return (
-      <div className="max-w-6xl mx-auto p-8 animate-in fade-in duration-300">
-        <div className="text-center mb-10">
-          <h3 className="text-3xl font-bold text-slate-900 mb-2">{grade}학년 대회 결과</h3>
-          <p className="text-slate-500">현재까지 입력된 점수를 바탕으로 한 종합 순위입니다.</p>
-        </div>
-
+      <div className="max-w-7xl mx-auto p-8 animate-in fade-in duration-300">
         {sortedClasses.length === 0 ? (
-           <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 shadow-sm">
-             <p className="text-slate-400">데이터가 없습니다.</p>
-           </div>
+          <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 shadow-sm">
+            <p className="text-slate-400">데이터가 없습니다.</p>
+          </div>
         ) : (
-          <div className="space-y-4">
-            {sortedClasses.map((cls, index) => {
-              const rank = index + 1;
-              const isTop3 = rank <= 3;
-              const totalScore = calculateTotalScore(cls);
-              
-              return (
-                <div 
-                  key={cls.id}
-                  className={`relative bg-white rounded-xl p-6 border transition-all ${
-                    isTop3 
-                      ? 'border-indigo-100 shadow-md scale-[1.01]' 
-                      : 'border-slate-200 shadow-sm'
-                  }`}
-                >
-                  <div className="flex flex-col md:flex-row items-center gap-6">
-                    <div className={`flex-shrink-0 w-16 h-16 flex items-center justify-center rounded-2xl text-2xl font-bold ${
-                      rank === 1 ? 'bg-yellow-100 text-yellow-700' :
-                      rank === 2 ? 'bg-slate-100 text-slate-600' :
-                      rank === 3 ? 'bg-orange-100 text-orange-700' :
-                      'bg-slate-50 text-slate-400'
-                    }`}>
-                      {rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank}
-                    </div>
-                    
-                    <div className="flex-1 w-full text-center md:text-left">
-                      <div className="flex flex-col md:flex-row md:items-baseline gap-3 mb-3">
-                        <h4 className="text-2xl font-bold text-slate-900">{cls.name}</h4>
-                        <span className="text-sm text-slate-500">재적 {cls.students.length}명</span>
-                      </div>
-                      
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
-                        {activeEvents.map(evt => {
-                          const res = cls.results[evt.id];
-                          const score = res?.score || 0;
-                          const participants = (evt.type === 'TEAM' || evt.type === 'PAIR')
-                             ? (res?.teamParticipantIds?.length || 0)
-                             : cls.students.length; // Assuming all joined individual or just show count of those with >0 score? Simplest is just count score.
+          <div className="space-y-12">
+            {/* 🏆 포디움 (1-3등) */}
+            {top3.length > 0 && (
+              <div className="grid grid-cols-3 gap-4 mb-16 max-w-5xl mx-auto items-end">
+                {/* 왼쪽: 2등 */}
+                {top3.length >= 2 ? renderPodiumCard(top3[1], 2) : <div></div>}
 
-                          return (
-                            <div key={evt.id} className="bg-slate-50 p-2 rounded border border-slate-100 flex flex-col">
-                              <span className="text-slate-500 text-xs truncate">{evt.name}</span>
-                              <div className="flex justify-between items-end mt-1">
-                                <span className="font-bold text-slate-800">{score}점</span>
-                                {(evt.type === 'TEAM' || evt.type === 'PAIR') && (
-                                  <span className="text-[10px] text-slate-400">{participants}명 참가</span>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
+                {/* 가운데: 1등 */}
+                {top3.length >= 1 && renderPodiumCard(top3[0], 1)}
 
-                    <div className="text-right flex-shrink-0 w-full md:w-auto border-t md:border-t-0 pt-4 md:pt-0 border-slate-100">
-                      <span className="block text-xs font-bold text-indigo-500 uppercase tracking-wider mb-1">Total Score</span>
-                      <span className="text-4xl font-black text-slate-900 tracking-tight">{totalScore}</span>
-                    </div>
-                  </div>
-                  
-                  {isTop3 && (
-                    <div className="absolute -top-3 -right-3 hidden md:block">
-                      <Medal className={`w-8 h-8 ${
-                        rank === 1 ? 'text-yellow-400 drop-shadow-sm' :
-                        rank === 2 ? 'text-slate-300 drop-shadow-sm' :
-                        'text-orange-400 drop-shadow-sm'
-                      }`} />
-                    </div>
-                  )}
+                {/* 오른쪽: 3등 */}
+                {top3.length >= 3 ? renderPodiumCard(top3[2], 3) : <div></div>}
+              </div>
+            )}
+
+            {/* 📋 4등 이하 목록 */}
+            {rest.length > 0 && (
+              <div>
+                <div className="text-center mb-6">
+                  <h4 className="text-xl font-bold text-slate-700 mb-2">📋 전체 순위</h4>
+                  <p className="text-sm text-slate-500">4등 이하</p>
                 </div>
-              );
-            })}
+                <div className="space-y-3">
+                  {rest.map((cls, index) => {
+                    const rank = index + 4;
+                    const totalScore = calculateTotalScore(cls);
+
+                    return (
+                      <div
+                        key={cls.id}
+                        className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm hover:shadow-md transition-all"
+                      >
+                        <div className="flex flex-col md:flex-row items-center gap-4">
+                          {/* 순위 */}
+                          <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center rounded-xl bg-slate-50 text-slate-600 text-xl font-bold">
+                            {rank}
+                          </div>
+
+                          {/* 학급 정보 */}
+                          <div className="flex-1 w-full text-center md:text-left">
+                            <div className="flex flex-col md:flex-row md:items-baseline gap-2 mb-3">
+                              <h4 className="text-xl font-bold text-slate-900">{cls.name}</h4>
+                              <span className="text-sm text-slate-500">재적 {cls.students.length}명</span>
+                            </div>
+
+                            {/* 종목별 점수 */}
+                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 text-sm">
+                              {activeEvents.map(evt => {
+                                const res = cls.results[evt.id];
+                                const score = res?.score || 0;
+
+                                return (
+                                  <div key={evt.id} className="bg-slate-50 p-2 rounded border border-slate-100">
+                                    <span className="text-slate-500 text-xs truncate block">{evt.name}</span>
+                                    <span className="font-bold text-slate-800">{score}점</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* 총점 */}
+                          <div className="text-center flex-shrink-0 w-full md:w-auto border-t md:border-t-0 pt-4 md:pt-0 border-slate-100">
+                            <span className="block text-xs font-bold text-indigo-500 uppercase tracking-wider mb-1">
+                              Total
+                            </span>
+                            <span className="text-3xl font-black text-slate-900 tracking-tight">
+                              {totalScore}
+                            </span>
+                            <span className="text-sm text-slate-500 ml-1">점</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

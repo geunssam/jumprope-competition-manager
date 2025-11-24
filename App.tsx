@@ -5,6 +5,7 @@ import { GradeView } from './components/GradeView';
 import { LoginPage } from './components/LoginPage';
 import PrivacyConsentGuard from './components/PrivacyConsentGuard';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import './utils/runMigration'; // 마이그레이션 함수 로드
 import {
   subscribeToEvents,
   subscribeToGradeClasses,
@@ -25,6 +26,10 @@ import { INITIAL_EVENTS } from './constants';
 import { writeBatch, doc } from 'firebase/firestore';
 import { db } from './lib/firebase';
 
+// 캐시 버전 관리 (배포 시마다 버전 증가)
+const APP_VERSION = '2.1.0';
+const CACHE_VERSION_KEY = 'jr_app_version';
+
 const AppContent: React.FC = () => {
   const { user, loading: authLoading } = useAuth();
 
@@ -42,6 +47,37 @@ const AppContent: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewMode>(ViewMode.GRADE);
   const [currentGrade, setCurrentGrade] = useState<number>(1);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
+
+  // 0. 캐시 버전 체크 (앱 시작 시 한 번만)
+  useEffect(() => {
+    const storedVersion = localStorage.getItem(CACHE_VERSION_KEY);
+
+    if (storedVersion !== APP_VERSION) {
+      console.log(`🔄 앱 버전 업데이트 감지: ${storedVersion} → ${APP_VERSION}`);
+      console.log('🧹 캐시 클리어 중...');
+
+      // 중요한 데이터만 보존하고 나머지 캐시 제거
+      const competitionId = localStorage.getItem('jr_competition_id');
+      const migrationFlag = localStorage.getItem('jr_migrated_to_firebase');
+      const privacyConsent = localStorage.getItem('jr_privacy_consent');
+
+      // 모든 jr_ 관련 캐시 제거
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('jr_')) {
+          localStorage.removeItem(key);
+        }
+      });
+
+      // 중요 데이터 복원
+      if (competitionId) localStorage.setItem('jr_competition_id', competitionId);
+      if (migrationFlag) localStorage.setItem('jr_migrated_to_firebase', migrationFlag);
+      if (privacyConsent) localStorage.setItem('jr_privacy_consent', privacyConsent);
+
+      // 새 버전 저장
+      localStorage.setItem(CACHE_VERSION_KEY, APP_VERSION);
+      console.log('✅ 캐시 클리어 완료');
+    }
+  }, []); // 한 번만 실행
 
   // 1. 대회 초기화
   useEffect(() => {
@@ -103,7 +139,7 @@ const AppContent: React.FC = () => {
             console.log('📝 초기 종목 추가 중...');
             const batch = writeBatch(db);
             INITIAL_EVENTS.forEach(event => {
-              const eventRef = doc(db, 'events', event.id);
+              const eventRef = doc(db, 'users', user.uid, 'events', event.id);
               batch.set(eventRef, { ...event, competitionId: newCompId });
             });
             await batch.commit();
@@ -127,45 +163,97 @@ const AppContent: React.FC = () => {
 
   // 2. 종목 실시간 구독
   useEffect(() => {
-    if (!currentCompetitionId) return;
+    console.log('🎯 [App] 종목 구독 useEffect 실행', {
+      user: user?.uid,
+      currentCompetitionId
+    });
 
-    const unsubscribe = subscribeToEvents(currentCompetitionId, (updatedEvents) => {
+    if (!user || !currentCompetitionId) {
+      console.log('⚠️ [App] 종목 구독 조건 불충족:', {
+        hasUser: !!user,
+        hasCompetitionId: !!currentCompetitionId
+      });
+      return;
+    }
+
+    console.log('✅ [App] 종목 구독 시작', {
+      userId: user.uid,
+      competitionId: currentCompetitionId
+    });
+
+    const unsubscribe = subscribeToEvents(user.uid, currentCompetitionId, (updatedEvents) => {
+      console.log('📦 [App] 종목 데이터 콜백 받음');
+      console.log('   - 종목 개수:', updatedEvents.length);
+      console.log('   - 종목 목록:', updatedEvents.map(e => `${e.name} (${e.id})`).join(', '));
+      console.log('   - 전체 데이터:', updatedEvents);
       setEvents(updatedEvents);
     });
 
-    return () => unsubscribe();
-  }, [currentCompetitionId]);
+    return () => {
+      console.log('🔚 [App] 종목 구독 해제');
+      unsubscribe();
+    };
+  }, [user, currentCompetitionId]);
 
   // 3. 학급 실시간 구독 (학년별)
   useEffect(() => {
-    if (!currentCompetitionId || currentView !== ViewMode.GRADE) return;
+    console.log('🔍 [App] 학급 구독 useEffect 실행', {
+      user: user?.uid,
+      currentCompetitionId,
+      currentGrade,
+      currentView,
+      viewModeGrade: ViewMode.GRADE
+    });
+
+    if (!user || !currentCompetitionId || currentView !== ViewMode.GRADE) {
+      console.log('⚠️ [App] 학급 구독 조건 불충족:', {
+        hasUser: !!user,
+        hasCompetitionId: !!currentCompetitionId,
+        isGradeView: currentView === ViewMode.GRADE
+      });
+      return;
+    }
+
+    console.log('✅ [App] 학급 구독 시작', {
+      userId: user.uid,
+      competitionId: currentCompetitionId,
+      grade: currentGrade
+    });
 
     const unsubscribe = subscribeToGradeClasses(
+      user.uid,
       currentCompetitionId,
       currentGrade,
       (updatedClasses) => {
+        console.log('📦 [App] 학급 데이터 콜백 받음', {
+          classCount: updatedClasses.length,
+          classes: updatedClasses
+        });
         setClasses(updatedClasses);
       }
     );
 
-    return () => unsubscribe();
-  }, [currentCompetitionId, currentGrade, currentView]);
+    return () => {
+      console.log('🔚 [App] 학급 구독 해제');
+      unsubscribe();
+    };
+  }, [user, currentCompetitionId, currentGrade, currentView]);
 
   // 4. 학년 설정 로드
   useEffect(() => {
-    if (!currentCompetitionId) return;
+    if (!user || !currentCompetitionId) return;
 
     const loadConfigs = async () => {
       const configs: GradeConfig[] = [];
       for (let grade = 1; grade <= 6; grade++) {
-        const config = await getGradeConfig(currentCompetitionId, grade);
+        const config = await getGradeConfig(user.uid, currentCompetitionId, grade);
         configs.push(config || { grade, events: {} });
       }
       setGradeConfigs(configs);
     };
 
     loadConfigs();
-  }, [currentCompetitionId]);
+  }, [user, currentCompetitionId]);
 
   // --- Handlers ---
   const handleSelectGrade = (grade: number) => {
@@ -178,19 +266,19 @@ const AppContent: React.FC = () => {
   };
 
   const handleUpdateGradeConfig = async (newConfig: GradeConfig) => {
-    if (!currentCompetitionId) return;
-    await updateGradeConfig(currentCompetitionId, newConfig);
+    if (!user || !currentCompetitionId) return;
+    await updateGradeConfig(user.uid, currentCompetitionId, newConfig);
     setGradeConfigs(prev => prev.map(c => c.grade === newConfig.grade ? newConfig : c));
   };
 
   const handleUpdateClasses = async (updatedClasses: ClassTeam[]) => {
-    if (!currentCompetitionId) return;
-    await batchUpdateClasses(currentCompetitionId, updatedClasses);
+    if (!user || !currentCompetitionId) return;
+    await batchUpdateClasses(user.uid, currentCompetitionId, updatedClasses);
     // 실시간 리스너가 자동으로 업데이트
   };
 
   const handleUpdateEvents = async (updatedEvents: CompetitionEvent[]) => {
-    if (!currentCompetitionId) return;
+    if (!user || !currentCompetitionId) return;
 
     // 삭제된 종목 찾기
     const existingIds = events.map(e => e.id);
@@ -200,11 +288,11 @@ const AppContent: React.FC = () => {
     // Firestore에서 실제 삭제
     const { deleteEvent } = await import('./services/firestore');
     for (const id of deletedIds) {
-      await deleteEvent(id);
+      await deleteEvent(user.uid, id);
     }
 
     // 나머지 업데이트
-    await batchUpdateEvents(currentCompetitionId, updatedEvents);
+    await batchUpdateEvents(user.uid, currentCompetitionId, updatedEvents);
     // 실시간 리스너가 자동으로 업데이트
   };
 
@@ -267,6 +355,7 @@ const AppContent: React.FC = () => {
             <GradeView
               key={currentGrade} // Force re-render on grade switch to clear local inputs if needed
               competitionId={currentCompetitionId!}
+              userId={user!.uid}
               grade={currentGrade}
               classes={classes}
               events={events}

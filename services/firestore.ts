@@ -17,6 +17,15 @@ import {
 import { db } from '../lib/firebase';
 import { ClassTeam, CompetitionEvent, GradeConfig, PracticeRecord, TeacherSettings, ClassStats } from '../types';
 
+// === Helper 함수 ===
+const getUserCollection = (userId: string, collectionName: string) => {
+  return collection(db, 'users', userId, collectionName);
+};
+
+const getUserDoc = (userId: string, collectionName: string, docId: string) => {
+  return doc(db, 'users', userId, collectionName, docId);
+};
+
 // === 대회 관리 ===
 export const createCompetition = async (userId: string, name: string): Promise<string> => {
   const compRef = doc(collection(db, 'competitions'));
@@ -36,41 +45,79 @@ export const getMyCompetitions = async (userId: string) => {
 };
 
 // === 종목 관리 ===
-export const createEvent = async (competitionId: string, event: CompetitionEvent) => {
-  await setDoc(doc(db, 'events', event.id), {
+export const createEvent = async (userId: string, competitionId: string, event: CompetitionEvent) => {
+  await setDoc(getUserDoc(userId, 'events', event.id), {
     ...event,
     competitionId
   });
 };
 
-export const getEvents = async (competitionId: string): Promise<CompetitionEvent[]> => {
-  const q = query(collection(db, 'events'), where('competitionId', '==', competitionId));
+export const getEvents = async (userId: string, competitionId: string): Promise<CompetitionEvent[]> => {
+  const q = query(getUserCollection(userId, 'events'), where('competitionId', '==', competitionId));
   const snapshot = await getDocs(q);
   return snapshot.docs.map(doc => doc.data() as CompetitionEvent);
 };
 
 export const subscribeToEvents = (
+  userId: string,
   competitionId: string,
   callback: (events: CompetitionEvent[]) => void
 ): Unsubscribe => {
-  const q = query(collection(db, 'events'), where('competitionId', '==', competitionId));
-  return onSnapshot(q, (snapshot) => {
-    const events = snapshot.docs.map(doc => doc.data() as CompetitionEvent);
-    callback(events);
+  console.log('🔥 [Firestore] subscribeToEvents 호출됨', {
+    userId,
+    competitionId
   });
+
+  const q = query(getUserCollection(userId, 'events'), where('competitionId', '==', competitionId));
+
+  console.log('📝 [Firestore] 종목 쿼리 생성 완료, onSnapshot 등록 중...');
+
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      console.log('📡 [Firestore] 종목 onSnapshot 콜백 실행', {
+        docCount: snapshot.docs.length,
+        isEmpty: snapshot.empty
+      });
+
+      const events = snapshot.docs.map(doc => {
+        const data = doc.data() as CompetitionEvent;
+        console.log('📄 [Firestore] 종목 문서 데이터:', {
+          id: doc.id,
+          data
+        });
+        return data;
+      });
+
+      console.log('✅ [Firestore] 종목 데이터 콜백 전달', {
+        eventCount: events.length,
+        events
+      });
+
+      callback(events);
+    },
+    (error) => {
+      console.error('❌ [Firestore] 종목 onSnapshot 에러:', error);
+      console.error('에러 상세:', {
+        code: error.code,
+        message: error.message,
+        name: error.name
+      });
+    }
+  );
 };
 
-export const updateEvent = async (eventId: string, updates: Partial<CompetitionEvent>) => {
-  await updateDoc(doc(db, 'events', eventId), updates);
+export const updateEvent = async (userId: string, eventId: string, updates: Partial<CompetitionEvent>) => {
+  await updateDoc(getUserDoc(userId, 'events', eventId), updates);
 };
 
-export const deleteEvent = async (eventId: string) => {
-  await deleteDoc(doc(db, 'events', eventId));
+export const deleteEvent = async (userId: string, eventId: string) => {
+  await deleteDoc(getUserDoc(userId, 'events', eventId));
 };
 
 // === 학급 관리 ===
-export const createClass = async (competitionId: string, classData: ClassTeam) => {
-  await setDoc(doc(db, 'classes', classData.id), {
+export const createClass = async (userId: string, competitionId: string, classData: ClassTeam) => {
+  await setDoc(getUserDoc(userId, 'classes', classData.id), {
     ...classData,
     competitionId,
     totalScore: 0,
@@ -78,24 +125,24 @@ export const createClass = async (competitionId: string, classData: ClassTeam) =
   });
 };
 
-export const updateClass = async (classId: string, updates: Partial<ClassTeam>) => {
-  await updateDoc(doc(db, 'classes', classId), {
+export const updateClass = async (userId: string, classId: string, updates: Partial<ClassTeam>) => {
+  await updateDoc(getUserDoc(userId, 'classes', classId), {
     ...updates,
     updatedAt: serverTimestamp()
   });
 };
 
-export const updateClassStudents = async (classId: string, students: Student[]) => {
-  await updateDoc(doc(db, 'classes', classId), {
+export const updateClassStudents = async (userId: string, classId: string, students: Student[]) => {
+  await updateDoc(getUserDoc(userId, 'classes', classId), {
     students,
     updatedAt: serverTimestamp()
   });
 };
 
-export const deleteClass = async (classId: string) => {
+export const deleteClass = async (userId: string, classId: string) => {
   console.log('🗑️ 학급 삭제 시작:', classId);
   try {
-    await deleteDoc(doc(db, 'classes', classId));
+    await deleteDoc(getUserDoc(userId, 'classes', classId));
     console.log('✅ 학급 삭제 완료:', classId);
   } catch (error) {
     console.error('❌ 학급 삭제 실패:', error);
@@ -104,11 +151,12 @@ export const deleteClass = async (classId: string) => {
 };
 
 export const getGradeClasses = async (
+  userId: string,
   competitionId: string,
   grade: number
 ): Promise<ClassTeam[]> => {
   const q = query(
-    collection(db, 'classes'),
+    getUserCollection(userId, 'classes'),
     where('competitionId', '==', competitionId),
     where('grade', '==', grade)
   );
@@ -117,10 +165,11 @@ export const getGradeClasses = async (
 };
 
 export const getAllClasses = async (
+  userId: string,
   competitionId: string
 ): Promise<ClassTeam[]> => {
   const q = query(
-    collection(db, 'classes'),
+    getUserCollection(userId, 'classes'),
     where('competitionId', '==', competitionId)
   );
   const snapshot = await getDocs(q);
@@ -131,30 +180,70 @@ export const getAllClasses = async (
 };
 
 export const subscribeToGradeClasses = (
+  userId: string,
   competitionId: string,
   grade: number,
   callback: (classes: ClassTeam[]) => void
 ): Unsubscribe => {
+  console.log('🔥 [Firestore] subscribeToGradeClasses 호출됨', {
+    userId,
+    competitionId,
+    grade
+  });
+
   const q = query(
-    collection(db, 'classes'),
+    getUserCollection(userId, 'classes'),
     where('competitionId', '==', competitionId),
     where('grade', '==', grade)
   );
-  return onSnapshot(q, (snapshot) => {
-    const classes = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    } as ClassTeam));
-    callback(classes);
-  });
+
+  console.log('📝 [Firestore] 쿼리 생성 완료, onSnapshot 등록 중...');
+
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      console.log('📡 [Firestore] onSnapshot 콜백 실행', {
+        docCount: snapshot.docs.length,
+        isEmpty: snapshot.empty
+      });
+
+      const classes = snapshot.docs.map(doc => {
+        const data = doc.data();
+        console.log('📄 [Firestore] 문서 데이터:', {
+          id: doc.id,
+          data
+        });
+        return {
+          id: doc.id,
+          ...data
+        } as ClassTeam;
+      });
+
+      console.log('✅ [Firestore] 학급 데이터 콜백 전달', {
+        classCount: classes.length,
+        classes
+      });
+
+      callback(classes);
+    },
+    (error) => {
+      console.error('❌ [Firestore] onSnapshot 에러:', error);
+      console.error('에러 상세:', {
+        code: error.code,
+        message: error.message,
+        name: error.name
+      });
+    }
+  );
 };
 
 export const subscribeToAllClasses = (
+  userId: string,
   competitionId: string,
   callback: (classes: ClassTeam[]) => void
 ): Unsubscribe => {
   const q = query(
-    collection(db, 'classes'),
+    getUserCollection(userId, 'classes'),
     where('competitionId', '==', competitionId)
   );
   return onSnapshot(q, (snapshot) => {
@@ -167,13 +256,14 @@ export const subscribeToAllClasses = (
 };
 
 export const updateClassResults = async (
+  userId: string,
   classId: string,
   results: ClassTeam['results']
 ) => {
   // 총점 계산
   const totalScore = Object.values(results).reduce((sum, result) => sum + result.score, 0);
 
-  await updateDoc(doc(db, 'classes', classId), {
+  await updateDoc(getUserDoc(userId, 'classes', classId), {
     results,
     totalScore,
     updatedAt: serverTimestamp()
@@ -182,31 +272,33 @@ export const updateClassResults = async (
 
 // === 학년 설정 관리 ===
 export const updateGradeConfig = async (
+  userId: string,
   competitionId: string,
   config: GradeConfig
 ) => {
   const configId = `${competitionId}_${config.grade}`;
-  await setDoc(doc(db, 'gradeConfigs', configId), {
+  await setDoc(getUserDoc(userId, 'gradeConfigs', configId), {
     ...config,
     competitionId
   });
 };
 
 export const getGradeConfig = async (
+  userId: string,
   competitionId: string,
   grade: number
 ): Promise<GradeConfig | null> => {
   const configId = `${competitionId}_${grade}`;
-  const snapshot = await getDoc(doc(db, 'gradeConfigs', configId));
+  const snapshot = await getDoc(getUserDoc(userId, 'gradeConfigs', configId));
   return snapshot.exists() ? snapshot.data() as GradeConfig : null;
 };
 
 // === 일괄 작업 ===
-export const batchUpdateClasses = async (competitionId: string, classes: ClassTeam[]) => {
+export const batchUpdateClasses = async (userId: string, competitionId: string, classes: ClassTeam[]) => {
   const batch = writeBatch(db);
 
   classes.forEach(cls => {
-    const ref = doc(db, 'classes', cls.id);
+    const ref = getUserDoc(userId, 'classes', cls.id);
     batch.set(ref, {
       ...cls,
       competitionId,
@@ -217,11 +309,11 @@ export const batchUpdateClasses = async (competitionId: string, classes: ClassTe
   await batch.commit();
 };
 
-export const batchUpdateEvents = async (competitionId: string, events: CompetitionEvent[]) => {
+export const batchUpdateEvents = async (userId: string, competitionId: string, events: CompetitionEvent[]) => {
   const batch = writeBatch(db);
 
   events.forEach(event => {
-    const ref = doc(db, 'events', event.id);
+    const ref = getUserDoc(userId, 'events', event.id);
     batch.set(ref, {
       ...event,
       competitionId
