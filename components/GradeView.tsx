@@ -213,9 +213,14 @@ export const GradeView: React.FC<GradeViewProps> = ({
   };
 
   const handleDeleteClass = useCallback(async (classId: string) => {
-    const { deleteClass } = await import('../services/firestore');
-    await deleteClass(classId);
-    // onUpdateClasses will be triggered by real-time listener in App.tsx
+    try {
+      const { deleteClass } = await import('../services/firestore');
+      await deleteClass(classId);
+      // onUpdateClasses will be triggered by real-time listener in App.tsx
+    } catch (error) {
+      console.error('학급 삭제 중 오류:', error);
+      alert('학급 삭제에 실패했습니다. 다시 시도해주세요.');
+    }
   }, []);
 
   const handleUpdateStudents = useCallback(async (classId: string, students: Student[]) => {

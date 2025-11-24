@@ -93,7 +93,14 @@ export const updateClassStudents = async (classId: string, students: Student[]) 
 };
 
 export const deleteClass = async (classId: string) => {
-  await deleteDoc(doc(db, 'classes', classId));
+  console.log('🗑️ 학급 삭제 시작:', classId);
+  try {
+    await deleteDoc(doc(db, 'classes', classId));
+    console.log('✅ 학급 삭제 완료:', classId);
+  } catch (error) {
+    console.error('❌ 학급 삭제 실패:', error);
+    throw error;
+  }
 };
 
 export const getGradeClasses = async (
