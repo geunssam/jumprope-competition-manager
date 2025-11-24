@@ -17,9 +17,32 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audio30Ref = useRef<HTMLAudioElement | null>(null);
+  const audio60Ref = useRef<HTMLAudioElement | null>(null);
   const readyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<number | null>(null);
   const targetDurationRef = useRef<number>(0);
+
+  // 오디오 미리 로드
+  useEffect(() => {
+    audio30Ref.current = new Audio('/sounds/30sec.mp3');
+    audio60Ref.current = new Audio('/sounds/60sec.mp3');
+
+    // 오디오 프리로드
+    audio30Ref.current.preload = 'auto';
+    audio60Ref.current.preload = 'auto';
+
+    return () => {
+      if (audio30Ref.current) {
+        audio30Ref.current.pause();
+        audio30Ref.current = null;
+      }
+      if (audio60Ref.current) {
+        audio60Ref.current.pause();
+        audio60Ref.current = null;
+      }
+    };
+  }, []);
 
   // 총 초 계산
   const totalSeconds = minutes * 60 + seconds;
@@ -110,11 +133,16 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
     setMinutes(0);
     setSeconds(30);
     setRemainingSeconds(30);
-    playAudio('/sounds/30sec.mp3');
     setTimerState('ready');
     setIsFullscreen(true);
 
-    // 1.8초 후 타이머 시작 (startTime은 running 상태가 될 때 기록)
+    // 음원 즉시 재생 (미리 로드된 오디오 사용)
+    if (audio30Ref.current) {
+      audio30Ref.current.currentTime = 0;
+      audio30Ref.current.play().catch(e => console.log('Audio play failed:', e));
+    }
+
+    // 1.8초 후 타이머 시작 (음원과 동기화)
     readyTimeoutRef.current = setTimeout(() => {
       setTimerState('running');
       // running 상태로 전환될 때 startTime 기록 (1.8초 ready 시간 제외)
@@ -128,11 +156,16 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
     setMinutes(1);
     setSeconds(0);
     setRemainingSeconds(60);
-    playAudio('/sounds/60sec.mp3');
     setTimerState('ready');
     setIsFullscreen(true);
 
-    // 1.8초 후 타이머 시작 (startTime은 running 상태가 될 때 기록)
+    // 음원 즉시 재생 (미리 로드된 오디오 사용)
+    if (audio60Ref.current) {
+      audio60Ref.current.currentTime = 0;
+      audio60Ref.current.play().catch(e => console.log('Audio play failed:', e));
+    }
+
+    // 1.8초 후 타이머 시작 (음원과 동기화)
     readyTimeoutRef.current = setTimeout(() => {
       setTimerState('running');
       // running 상태로 전환될 때 startTime 기록 (1.8초 ready 시간 제외)
@@ -144,7 +177,10 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
   // 타이머 일시정지
   const pauseTimer = () => {
     setTimerState('paused');
-    stopAudio(); // 음원도 정지
+    // 미리 로드된 오디오들도 정지
+    if (audio30Ref.current) audio30Ref.current.pause();
+    if (audio60Ref.current) audio60Ref.current.pause();
+    stopAudio();
     // 현재 남은 시간을 remainingSeconds에 저장 (이미 state에 있음)
     startTimeRef.current = null; // 시작 시간 초기화
   };
@@ -162,6 +198,15 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
     setTimerState('idle');
     setRemainingSeconds(totalSeconds);
     setIsFullscreen(false);
+    // 미리 로드된 오디오들도 정지
+    if (audio30Ref.current) {
+      audio30Ref.current.pause();
+      audio30Ref.current.currentTime = 0;
+    }
+    if (audio60Ref.current) {
+      audio60Ref.current.pause();
+      audio60Ref.current.currentTime = 0;
+    }
     stopAudio();
     startTimeRef.current = null;
     targetDurationRef.current = 0;
@@ -180,6 +225,9 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
     setIsFullscreen(false);
     if (timerState === 'running' || timerState === 'ready') {
       setTimerState('paused');
+      // 미리 로드된 오디오들도 정지
+      if (audio30Ref.current) audio30Ref.current.pause();
+      if (audio60Ref.current) audio60Ref.current.pause();
       stopAudio();
       startTimeRef.current = null;
     }
