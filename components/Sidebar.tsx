@@ -140,7 +140,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* 사용자 프로필 섹션 */}
       {user && (
-        <div className={`${isCollapsed ? 'p-2 pb-8' : 'p-3 md:p-4 pb-10 md:pb-14'} mt-auto border-t border-slate-100 relative flex-shrink-0 bg-white`} ref={profileMenuRef}>
+        <div className={`${isCollapsed ? 'p-2 pb-4' : 'p-3 md:p-4 pb-4'} mt-auto border-t border-slate-100 relative flex-shrink-0 bg-white`} ref={profileMenuRef}>
           <button
             onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
             className={`w-full flex items-center ${isCollapsed ? 'justify-center px-2' : 'gap-2 md:gap-3 px-3'} py-2.5 md:py-3 rounded-lg text-sm transition-all hover:bg-slate-50 active:bg-slate-100 group touch-manipulation min-h-[50px]`}
