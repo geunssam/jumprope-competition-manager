@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ClassTeam, CompetitionEvent } from '../types';
-import { ChevronDown, ChevronRight, Edit3, Save } from 'lucide-react';
+import { ChevronDown, ChevronRight, Edit3, Save, Users, X } from 'lucide-react';
 import { saveCompetitionResults } from '../services/firestore';
 
 interface MatrixRecordTableProps {
@@ -30,6 +30,9 @@ export const MatrixRecordTable: React.FC<MatrixRecordTableProps> = ({
   // 저장 상태
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+
+  // 멤버 목록 모달 상태
+  const [memberModal, setMemberModal] = useState<{ members: string[] } | null>(null);
 
   // 각 학급별 총점 계산
   const getClassTotalScore = (classTeam: ClassTeam) => {
@@ -329,6 +332,21 @@ export const MatrixRecordTable: React.FC<MatrixRecordTableProps> = ({
                                           >
                                             -10
                                           </button>
+                                          {/* -5 버튼 */}
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleStudentScoreChange(
+                                                cls.id,
+                                                evt.id,
+                                                studentId,
+                                                Math.max(0, studentScore - 5)
+                                              );
+                                            }}
+                                            className="w-7 h-8 flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-600 rounded border border-slate-300 transition-colors text-xs font-medium touch-manipulation active:bg-slate-300"
+                                          >
+                                            -5
+                                          </button>
                                           {/* -1 버튼 */}
                                           <button
                                             onClick={(e) => {
@@ -340,11 +358,11 @@ export const MatrixRecordTable: React.FC<MatrixRecordTableProps> = ({
                                                 Math.max(0, studentScore - 1)
                                               );
                                             }}
-                                            className="w-7 h-8 flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-600 rounded border border-slate-300 transition-colors text-xs font-medium touch-manipulation active:bg-slate-300"
+                                            className="w-6 h-8 flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-600 rounded border border-slate-300 transition-colors text-xs font-medium touch-manipulation active:bg-slate-300"
                                           >
                                             -1
                                           </button>
-                                          {/* 점수 입력 필드 */}
+                                          {/* 점수 입력 필드 - 스피너 숨김 */}
                                           <input
                                             type="number"
                                             value={studentScore || ''}
@@ -356,7 +374,7 @@ export const MatrixRecordTable: React.FC<MatrixRecordTableProps> = ({
                                                 parseInt(e.target.value) || 0
                                               )
                                             }
-                                            className="w-14 h-8 px-2 text-sm text-center font-bold border-2 border-indigo-300 rounded focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white text-indigo-700 touch-manipulation"
+                                            className="w-14 h-8 px-2 text-sm text-center font-bold border-2 border-indigo-300 rounded focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white text-indigo-700 touch-manipulation [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                             onClick={(e) => e.stopPropagation()}
                                           />
                                           {/* +1 버튼 */}
@@ -370,9 +388,24 @@ export const MatrixRecordTable: React.FC<MatrixRecordTableProps> = ({
                                                 studentScore + 1
                                               );
                                             }}
-                                            className="w-7 h-8 flex items-center justify-center bg-indigo-100 hover:bg-indigo-200 text-indigo-600 rounded border border-indigo-300 transition-colors text-xs font-medium touch-manipulation active:bg-indigo-300"
+                                            className="w-6 h-8 flex items-center justify-center bg-indigo-100 hover:bg-indigo-200 text-indigo-600 rounded border border-indigo-300 transition-colors text-xs font-medium touch-manipulation active:bg-indigo-300"
                                           >
                                             +1
+                                          </button>
+                                          {/* +5 버튼 */}
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleStudentScoreChange(
+                                                cls.id,
+                                                evt.id,
+                                                studentId,
+                                                studentScore + 5
+                                              );
+                                            }}
+                                            className="w-7 h-8 flex items-center justify-center bg-indigo-100 hover:bg-indigo-200 text-indigo-600 rounded border border-indigo-300 transition-colors text-xs font-medium touch-manipulation active:bg-indigo-300"
+                                          >
+                                            +5
                                           </button>
                                           {/* +10 버튼 */}
                                           <button
@@ -414,103 +447,119 @@ export const MatrixRecordTable: React.FC<MatrixRecordTableProps> = ({
                                 <p className="text-[10px] font-bold text-slate-500 uppercase">
                                   팀별 점수
                                 </p>
-                                {onEditParticipants && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      onEditParticipants(evt.id, cls.id);
-                                    }}
-                                    className="flex items-center gap-1 px-2 py-1 text-[10px] text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                                    title="출전 팀 수정"
-                                  >
-                                    <Edit3 className="w-3 h-3" />
-                                    출전 수정
-                                  </button>
-                                )}
+                                <div className="flex items-center gap-1">
+                                  {/* 명단 보기 버튼 - 단체전만 표시 (짝줄넘기는 2명이라 불필요) */}
+                                  {evt.type === 'TEAM' && result?.teams && result.teams.length > 0 && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const allMemberNames = result.teams?.flatMap(team =>
+                                          team.memberIds?.map(memberId => {
+                                            const student = cls.students.find(s => s.id === memberId);
+                                            return student?.name || '';
+                                          }).filter(name => name) || []
+                                        ) || [];
+                                        if (allMemberNames.length > 0) {
+                                          setMemberModal({ members: allMemberNames });
+                                        }
+                                      }}
+                                      className="flex items-center gap-1 px-2 py-1 text-[10px] text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                                      title="팀 명단 보기"
+                                    >
+                                      <Users className="w-3 h-3" />
+                                      명단
+                                    </button>
+                                  )}
+                                  {onEditParticipants && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        onEditParticipants(evt.id, cls.id);
+                                      }}
+                                      className="flex items-center gap-1 px-2 py-1 text-[10px] text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                      title="출전 팀 수정"
+                                    >
+                                      <Edit3 className="w-3 h-3" />
+                                      출전 수정
+                                    </button>
+                                  )}
+                                </div>
                               </div>
 
                               {result?.teams && result.teams.length > 0 ? (
                                 <div className="space-y-2">
-                                  {result.teams.map((team) => (
-                                    <div
-                                      key={team.id}
-                                      className="bg-white rounded-lg p-2 border border-slate-200"
-                                    >
-                                      <div className="flex items-center gap-2 mb-2">
-                                        <span className="text-base font-bold text-slate-900 truncate flex-1 min-w-[60px]">
-                                          {team.name}
-                                        </span>
-                                        <div className="flex items-center gap-1">
-                                          {/* -10 버튼 */}
+                                  {result.teams.map((team) => {
+                                    const memberNames = team.memberIds
+                                      ?.map(memberId => {
+                                        const student = cls.students.find(s => s.id === memberId);
+                                        return student?.name || '';
+                                      })
+                                      .filter(name => name) || [];
+
+                                    return (
+                                      <div key={team.id} className="flex items-center gap-2">
+                                        {evt.type === 'PAIR' && memberNames.length > 0 && (
+                                          <span className="text-sm font-bold text-slate-900 min-w-[80px]">
+                                            {memberNames.join(', ')}
+                                          </span>
+                                        )}
+                                        <div className={`flex items-center gap-1 ${evt.type === 'TEAM' ? 'mx-auto' : 'ml-auto'}`}>
                                           <button
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              handleTeamScoreChange(
-                                                cls.id,
-                                                evt.id,
-                                                team.id,
-                                                Math.max(0, team.score - 10)
-                                              );
+                                              handleTeamScoreChange(cls.id, evt.id, team.id, Math.max(0, team.score - 10));
                                             }}
                                             className="w-8 h-8 flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-600 rounded border border-slate-300 transition-colors text-xs font-medium touch-manipulation active:bg-slate-300"
                                           >
                                             -10
                                           </button>
-                                          {/* -1 버튼 */}
                                           <button
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              handleTeamScoreChange(
-                                                cls.id,
-                                                evt.id,
-                                                team.id,
-                                                Math.max(0, team.score - 1)
-                                              );
+                                              handleTeamScoreChange(cls.id, evt.id, team.id, Math.max(0, team.score - 5));
                                             }}
                                             className="w-7 h-8 flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-600 rounded border border-slate-300 transition-colors text-xs font-medium touch-manipulation active:bg-slate-300"
                                           >
+                                            -5
+                                          </button>
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleTeamScoreChange(cls.id, evt.id, team.id, Math.max(0, team.score - 1));
+                                            }}
+                                            className="w-6 h-8 flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-600 rounded border border-slate-300 transition-colors text-xs font-medium touch-manipulation active:bg-slate-300"
+                                          >
                                             -1
                                           </button>
-                                          {/* 점수 입력 필드 */}
                                           <input
                                             type="number"
                                             value={team.score || ''}
-                                            onChange={(e) =>
-                                              handleTeamScoreChange(
-                                                cls.id,
-                                                evt.id,
-                                                team.id,
-                                                parseInt(e.target.value) || 0
-                                              )
-                                            }
-                                            className="w-14 h-8 px-2 text-sm text-center font-bold border-2 border-indigo-300 rounded focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white text-indigo-700 touch-manipulation"
+                                            onChange={(e) => handleTeamScoreChange(cls.id, evt.id, team.id, parseInt(e.target.value) || 0)}
+                                            className="w-16 h-8 px-2 text-base text-center font-bold border-2 border-indigo-300 rounded focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white text-indigo-700 touch-manipulation [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                             onClick={(e) => e.stopPropagation()}
                                           />
-                                          {/* +1 버튼 */}
                                           <button
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              handleTeamScoreChange(
-                                                cls.id,
-                                                evt.id,
-                                                team.id,
-                                                team.score + 1
-                                              );
+                                              handleTeamScoreChange(cls.id, evt.id, team.id, team.score + 1);
                                             }}
-                                            className="w-7 h-8 flex items-center justify-center bg-indigo-100 hover:bg-indigo-200 text-indigo-600 rounded border border-indigo-300 transition-colors text-xs font-medium touch-manipulation active:bg-indigo-300"
+                                            className="w-6 h-8 flex items-center justify-center bg-indigo-100 hover:bg-indigo-200 text-indigo-600 rounded border border-indigo-300 transition-colors text-xs font-medium touch-manipulation active:bg-indigo-300"
                                           >
                                             +1
                                           </button>
-                                          {/* +10 버튼 */}
                                           <button
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              handleTeamScoreChange(
-                                                cls.id,
-                                                evt.id,
-                                                team.id,
-                                                team.score + 10
-                                              );
+                                              handleTeamScoreChange(cls.id, evt.id, team.id, team.score + 5);
+                                            }}
+                                            className="w-7 h-8 flex items-center justify-center bg-indigo-100 hover:bg-indigo-200 text-indigo-600 rounded border border-indigo-300 transition-colors text-xs font-medium touch-manipulation active:bg-indigo-300"
+                                          >
+                                            +5
+                                          </button>
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleTeamScoreChange(cls.id, evt.id, team.id, team.score + 10);
                                             }}
                                             className="w-8 h-8 flex items-center justify-center bg-indigo-100 hover:bg-indigo-200 text-indigo-600 rounded border border-indigo-300 transition-colors text-xs font-medium touch-manipulation active:bg-indigo-300"
                                           >
@@ -518,8 +567,8 @@ export const MatrixRecordTable: React.FC<MatrixRecordTableProps> = ({
                                           </button>
                                         </div>
                                       </div>
-                                    </div>
-                                  ))}
+                                    );
+                                  })}
                                 </div>
                               ) : (
                                 <div className="text-center py-3">
@@ -562,6 +611,48 @@ export const MatrixRecordTable: React.FC<MatrixRecordTableProps> = ({
           {saving ? '저장 중...' : '경기 기록 저장'}
         </button>
       </div>
+
+      {/* 멤버 목록 모달 */}
+      {memberModal && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          onClick={() => setMemberModal(null)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <Users className="w-5 h-5 text-indigo-600" />
+                팀 멤버 ({memberModal.members.length}명)
+              </h3>
+              <button
+                onClick={() => setMemberModal(null)}
+                className="p-1 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+            <div className="grid grid-cols-5 gap-2">
+              {memberModal.members.map((name, idx) => (
+                <div
+                  key={idx}
+                  className="px-2 py-1.5 bg-slate-100 rounded text-center text-sm font-medium text-slate-700"
+                >
+                  {name}
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={() => setMemberModal(null)}
+              className="mt-4 w-full py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
+            >
+              닫기
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
