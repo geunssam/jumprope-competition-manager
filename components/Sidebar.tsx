@@ -88,7 +88,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   return (
-    <div className={`${isCollapsed ? 'w-20' : 'w-64'} bg-white border-r border-slate-200 flex flex-col h-screen flex-shrink-0 shadow-sm z-10 transition-all duration-300 overflow-hidden`}>
+    <div className={`${isCollapsed ? 'w-20' : 'w-64'} bg-white border-r border-slate-200 flex flex-col h-[100dvh] flex-shrink-0 shadow-sm z-10 transition-all duration-300 overflow-hidden`}>
       <div className={`${isCollapsed ? 'p-3' : 'p-3 md:p-4'} border-b border-slate-100 flex items-center justify-between gap-2 relative flex-shrink-0`}>
         <div className="bg-indigo-600 p-1.5 md:p-2 rounded-lg flex-shrink-0">
           <Trophy className="w-5 h-5 md:w-6 md:h-6 text-white" />
