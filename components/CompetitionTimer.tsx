@@ -20,8 +20,22 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
   const audio30Ref = useRef<HTMLAudioElement | null>(null);
   const audio60Ref = useRef<HTMLAudioElement | null>(null);
   const readyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const startTimeRef = useRef<number | null>(null);
-  const targetDurationRef = useRef<number>(0);
+  // 종료 시간 기준으로 변경 (더 정확한 카운트다운)
+  const targetEndTimeRef = useRef<number | null>(null);
+  // 일시정지 시 남은 시간 저장용
+  const pausedRemainingRef = useRef<number | null>(null);
+
+  // 음원 내 비프음 오프셋 (ms) - 음원 파일 분석 결과
+  const BEEP_OFFSET_MS = 1800; // 음원 시작 후 1.8초에 첫 비프음
+
+  // iOS/iPadOS 감지 (iPadOS는 Mac처럼 보이지만 터치 지원)
+  const isIOS = typeof navigator !== 'undefined' && (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  );
+
+  // iOS 추가 지연 (onplaying 이벤트 → 실제 스피커 출력 사이 지연)
+  const IOS_AUDIO_OUTPUT_DELAY = 500; // ms
 
   // 오디오 미리 로드
   useEffect(() => {
@@ -136,19 +150,30 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
     setTimerState('ready');
     setIsFullscreen(true);
 
-    // 음원 즉시 재생 (미리 로드된 오디오 사용)
-    if (audio30Ref.current) {
-      audio30Ref.current.currentTime = 0;
-      audio30Ref.current.play().catch(e => console.log('Audio play failed:', e));
-    }
+    const audio = audio30Ref.current;
+    if (!audio) return;
 
-    // 1.8초 후 타이머 시작 (음원과 동기화)
-    readyTimeoutRef.current = setTimeout(() => {
-      setTimerState('running');
-      // running 상태로 전환될 때 startTime 기록 (1.8초 ready 시간 제외)
-      startTimeRef.current = Date.now();
-      targetDurationRef.current = 30;
-    }, 1800);
+    audio.currentTime = 0;
+
+    // 실제 오디오 재생 시작 시점 감지 (기기별 지연 자동 처리)
+    const onPlaying = () => {
+      audio.removeEventListener('playing', onPlaying);
+
+      // 비프음 시점에 타이머 시작 (기본 오프셋 + iOS 추가 지연)
+      const totalDelay = BEEP_OFFSET_MS + (isIOS ? IOS_AUDIO_OUTPUT_DELAY : 0);
+
+      readyTimeoutRef.current = setTimeout(() => {
+        setTimerState('running');
+        // 종료 시간 설정: 현재 시간 + 30초
+        targetEndTimeRef.current = Date.now() + 30000;
+      }, totalDelay);
+    };
+
+    audio.addEventListener('playing', onPlaying);
+    audio.play().catch(e => {
+      console.log('Audio play failed:', e);
+      audio.removeEventListener('playing', onPlaying);
+    });
   };
 
   // 60초 음원 프리셋
@@ -159,37 +184,54 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
     setTimerState('ready');
     setIsFullscreen(true);
 
-    // 음원 즉시 재생 (미리 로드된 오디오 사용)
-    if (audio60Ref.current) {
-      audio60Ref.current.currentTime = 0;
-      audio60Ref.current.play().catch(e => console.log('Audio play failed:', e));
-    }
+    const audio = audio60Ref.current;
+    if (!audio) return;
 
-    // 1.8초 후 타이머 시작 (음원과 동기화)
-    readyTimeoutRef.current = setTimeout(() => {
-      setTimerState('running');
-      // running 상태로 전환될 때 startTime 기록 (1.8초 ready 시간 제외)
-      startTimeRef.current = Date.now();
-      targetDurationRef.current = 60;
-    }, 1800);
+    audio.currentTime = 0;
+
+    // 실제 오디오 재생 시작 시점 감지 (기기별 지연 자동 처리)
+    const onPlaying = () => {
+      audio.removeEventListener('playing', onPlaying);
+
+      // 비프음 시점에 타이머 시작 (기본 오프셋 + iOS 추가 지연)
+      const totalDelay = BEEP_OFFSET_MS + (isIOS ? IOS_AUDIO_OUTPUT_DELAY : 0);
+
+      readyTimeoutRef.current = setTimeout(() => {
+        setTimerState('running');
+        // 종료 시간 설정: 현재 시간 + 60초
+        targetEndTimeRef.current = Date.now() + 60000;
+      }, totalDelay);
+    };
+
+    audio.addEventListener('playing', onPlaying);
+    audio.play().catch(e => {
+      console.log('Audio play failed:', e);
+      audio.removeEventListener('playing', onPlaying);
+    });
   };
 
   // 타이머 일시정지
   const pauseTimer = () => {
+    // 현재 남은 시간 계산 및 저장
+    if (targetEndTimeRef.current) {
+      const remaining = Math.ceil((targetEndTimeRef.current - Date.now()) / 1000);
+      pausedRemainingRef.current = Math.max(0, remaining);
+    }
     setTimerState('paused');
     // 미리 로드된 오디오들도 정지
     if (audio30Ref.current) audio30Ref.current.pause();
     if (audio60Ref.current) audio60Ref.current.pause();
     stopAudio();
-    // 현재 남은 시간을 remainingSeconds에 저장 (이미 state에 있음)
-    startTimeRef.current = null; // 시작 시간 초기화
+    targetEndTimeRef.current = null;
   };
 
   // 타이머 재개
   const resumeTimer = () => {
-    // remainingSeconds에서 다시 시작
+    // 저장된 남은 시간으로 새 종료 시간 설정
+    const remaining = pausedRemainingRef.current ?? remainingSeconds;
+    targetEndTimeRef.current = Date.now() + (remaining * 1000);
+    pausedRemainingRef.current = null;
     setTimerState('running');
-    startTimeRef.current = null; // 다음 useEffect에서 새로 설정됨
     // 음원은 재개하지 않음 (싱크 어려움)
   };
 
@@ -208,8 +250,8 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
       audio60Ref.current.currentTime = 0;
     }
     stopAudio();
-    startTimeRef.current = null;
-    targetDurationRef.current = 0;
+    targetEndTimeRef.current = null;
+    pausedRemainingRef.current = null;
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
@@ -224,12 +266,17 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
   const closeFullscreen = () => {
     setIsFullscreen(false);
     if (timerState === 'running' || timerState === 'ready') {
+      // 현재 남은 시간 저장
+      if (targetEndTimeRef.current) {
+        const remaining = Math.ceil((targetEndTimeRef.current - Date.now()) / 1000);
+        pausedRemainingRef.current = Math.max(0, remaining);
+      }
       setTimerState('paused');
       // 미리 로드된 오디오들도 정지
       if (audio30Ref.current) audio30Ref.current.pause();
       if (audio60Ref.current) audio60Ref.current.pause();
       stopAudio();
-      startTimeRef.current = null;
+      targetEndTimeRef.current = null;
     }
     if (readyTimeoutRef.current) {
       clearTimeout(readyTimeoutRef.current);
@@ -244,35 +291,33 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
     }
   }, [totalSeconds, timerState]);
 
-  // 카운트다운 로직 (정확한 시간 기반)
+  // 카운트다운 로직 (종료 시간 기준 + Math.ceil로 정확한 1초 간격)
   useEffect(() => {
     if (timerState === 'running') {
-      // 음원 프리셋에서 이미 startTime 설정됨
-      // 수동 시작인 경우에만 새로 설정
-      if (startTimeRef.current === null) {
-        startTimeRef.current = Date.now();
-        targetDurationRef.current = remainingSeconds;
+      // 음원 프리셋에서 이미 targetEndTime 설정됨
+      // 수동 재개인 경우 resumeTimer에서 설정됨
+      // 그 외의 경우 (직접 시작) - 현재 remainingSeconds 기준으로 설정
+      if (targetEndTimeRef.current === null) {
+        targetEndTimeRef.current = Date.now() + (remainingSeconds * 1000);
       }
 
       intervalRef.current = setInterval(() => {
-        if (startTimeRef.current === null) return;
+        if (targetEndTimeRef.current === null) return;
 
-        // 실제 경과 시간 계산 (밀리초 → 초)
-        const elapsedSeconds = Math.floor((Date.now() - startTimeRef.current) / 1000);
+        const now = Date.now();
+        // Math.ceil 사용: 29001ms 남음 → 30초 표시, 29000ms 남음 → 29초 표시
+        // 이렇게 하면 "30"이 정확히 1초간 표시된 후 "29"로 전환
+        const remaining = Math.ceil((targetEndTimeRef.current - now) / 1000);
 
-        // 남은 시간 = 목표 시간 - 경과 시간
-        const remaining = Math.max(0, targetDurationRef.current - elapsedSeconds);
-
-        setRemainingSeconds(remaining);
-
-        if (remaining === 0) {
+        if (remaining <= 0) {
           // 타이머 종료
+          setRemainingSeconds(0);
           setTimerState('finished');
           if (intervalRef.current) {
             clearInterval(intervalRef.current);
             intervalRef.current = null;
           }
-          startTimeRef.current = null;
+          targetEndTimeRef.current = null;
 
           // 진동 (모바일)
           if (navigator.vibrate) {
@@ -283,16 +328,14 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
           setTimeout(() => {
             setIsFullscreen(false);
           }, 2000);
+        } else {
+          setRemainingSeconds(remaining);
         }
-      }, 100); // 100ms마다 체크하여 더 정확한 표시
+      }, 50); // 50ms마다 체크하여 더 정확한 전환
     } else {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
-      }
-      // paused 상태일 때는 startTime을 유지하지 않음
-      if (timerState === 'paused') {
-        startTimeRef.current = null;
       }
     }
 
