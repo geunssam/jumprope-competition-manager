@@ -1,5 +1,10 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  CACHE_SIZE_UNLIMITED
+} from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
 const firebaseConfig = {
@@ -25,5 +30,15 @@ if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
 }
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+
+// Firestore with Persistent Offline Cache (PWA 오프라인 지원)
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager(),
+    cacheSizeBytes: CACHE_SIZE_UNLIMITED
+  })
+});
+
 export const auth = getAuth(app);
+
+console.log('✅ Firebase initialized with offline persistence');

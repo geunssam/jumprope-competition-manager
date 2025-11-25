@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Users, Settings, Trophy, ChevronLeft, ChevronRight, LogOut, Shield } from 'lucide-react';
+import { Users, Settings, Trophy, ChevronLeft, ChevronRight, LogOut, Shield, RefreshCw } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import PrivacyPolicyModal from './PrivacyPolicyModal';
 import { savePrivacyConsent } from '../services/firestore';
@@ -12,6 +12,10 @@ interface SidebarProps {
   isSettingsActive: boolean;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
+  // 🆕 모드 토글 관련 props
+  currentMode: 'practice' | 'competition';
+  onModeToggle: () => void;
+  onClassManagementClick: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -21,6 +25,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isSettingsActive,
   isCollapsed,
   onToggleCollapse,
+  currentMode,
+  onModeToggle,
+  onClassManagementClick,
 }) => {
   const grades = [1, 2, 3, 4, 5, 6];
   const { user, logout } = useAuth();
@@ -28,6 +35,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const [isMobile, setIsMobile] = useState(false);
+  const [isPWA, setIsPWA] = useState(false);
 
   // 화면 크기 감지
   useEffect(() => {
@@ -40,6 +48,34 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
+
+  // PWA 환경 감지
+  useEffect(() => {
+    const checkPWA = () => {
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+        || (window.navigator as any).standalone === true;
+      setIsPWA(isStandalone);
+    };
+
+    checkPWA();
+
+    // display-mode 변경 감지
+    const mediaQuery = window.matchMedia('(display-mode: standalone)');
+    mediaQuery.addEventListener('change', checkPWA);
+
+    return () => mediaQuery.removeEventListener('change', checkPWA);
+  }, []);
+
+  // PWA 새로고침 핸들러
+  const handleRefresh = () => {
+    // 서비스 워커 업데이트 후 페이지 새로고침
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(registrations => {
+        registrations.forEach(registration => registration.update());
+      });
+    }
+    window.location.reload();
+  };
 
   // 외부 클릭 시 메뉴 닫기
   useEffect(() => {
@@ -96,17 +132,53 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {!isCollapsed && (
           <h1 className="font-bold text-base md:text-lg text-slate-800 tracking-tight whitespace-nowrap truncate flex-1">줄넘기 대회</h1>
         )}
-        <button
-          onClick={onToggleCollapse}
-          className={`flex-shrink-0 p-1.5 rounded-md hover:bg-slate-100 active:bg-slate-200 text-slate-400 hover:text-slate-600 transition-colors touch-manipulation ${isCollapsed ? 'ml-0' : '-ml-1'}`}
-          title={isCollapsed ? '펼치기' : '접기'}
-        >
-          {isCollapsed ? (
-            <ChevronRight className="w-4 h-4" />
-          ) : (
-            <ChevronLeft className="w-4 h-4" />
+        <div className="flex items-center gap-1">
+          {/* PWA 새로고침 버튼 */}
+          {isPWA && (
+            <button
+              onClick={handleRefresh}
+              className="flex-shrink-0 p-1.5 rounded-md hover:bg-slate-100 active:bg-slate-200 text-slate-400 hover:text-indigo-600 transition-colors touch-manipulation"
+              title="새로고침"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
           )}
-        </button>
+          <button
+            onClick={onToggleCollapse}
+            className={`flex-shrink-0 p-1.5 rounded-md hover:bg-slate-100 active:bg-slate-200 text-slate-400 hover:text-slate-600 transition-colors touch-manipulation`}
+            title={isCollapsed ? '펼치기' : '접기'}
+          >
+            {isCollapsed ? (
+              <ChevronRight className="w-4 h-4" />
+            ) : (
+              <ChevronLeft className="w-4 h-4" />
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* 🆕 연습/대회 모드 슬라이드 토글 */}
+      <div
+        onClick={onModeToggle}
+        className={`${isCollapsed ? 'mx-1.5' : 'mx-2 md:mx-3'} my-2 bg-slate-200 rounded-full p-1 cursor-pointer relative select-none`}
+      >
+        {/* 슬라이딩 배경 */}
+        <div
+          className={`absolute top-1 bottom-1 w-[calc(50%-4px)] bg-white rounded-full shadow-sm transition-all duration-200 ease-out
+            ${currentMode === 'competition' ? 'left-[calc(50%+2px)]' : 'left-1'}`}
+        />
+
+        {/* 라벨 */}
+        <div className="relative flex">
+          <span className={`flex-1 text-center py-1.5 text-xs md:text-sm z-10 transition-colors duration-200 whitespace-nowrap
+            ${currentMode === 'practice' ? 'text-green-600 font-semibold' : 'text-slate-400'}`}>
+            {isCollapsed ? '📝' : '📝 연습'}
+          </span>
+          <span className={`flex-1 text-center py-1.5 text-xs md:text-sm z-10 transition-colors duration-200 whitespace-nowrap
+            ${currentMode === 'competition' ? 'text-indigo-600 font-semibold' : 'text-slate-400'}`}>
+            {isCollapsed ? '🏆' : '🏆 대회'}
+          </span>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto py-3 md:py-4 px-2 md:px-3 space-y-1 min-h-0 pb-0">
@@ -174,6 +246,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* 드롭업 메뉴 */}
           {isProfileMenuOpen && (
             <div className={`absolute ${isCollapsed ? 'left-full ml-2 bottom-0' : 'left-2 right-2 md:left-4 md:right-4 bottom-full mb-2'} bg-white rounded-lg shadow-xl border border-slate-200 py-2 z-50 min-w-[200px] max-w-[280px]`}>
+              {/* 🆕 학급 관리 버튼 */}
+              <button
+                onClick={() => {
+                  setIsProfileMenuOpen(false);
+                  onClassManagementClick();
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 active:bg-slate-100 transition-colors touch-manipulation"
+              >
+                <Users className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                <span>학급 관리</span>
+              </button>
+              <div className="h-px bg-slate-100 my-1"></div>
               <button
                 onClick={() => {
                   setIsProfileMenuOpen(false);

@@ -24,3 +24,22 @@
   [headers.values]
     # JS/CSS 등 에셋 파일은 1년 캐시 (파일명에 해시가 있으므로 안전)
     Cache-Control = "public, max-age=31536000, immutable"
+
+# PWA Manifest
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Content-Type = "application/manifest+json"
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+# Service Worker
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+# Icons
+[[headers]]
+  for = "/icons/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"

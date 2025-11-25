@@ -5,7 +5,6 @@ import { Plus, Trash, CheckSquare, Square, Users, Trophy, ClipboardList, Setting
 import { MatrixRecordTable } from './MatrixRecordTable';
 import { CompetitionTimer } from './CompetitionTimer';
 import { CreateClassModal } from './CreateClassModal';
-import { ClassManagementModal } from './ClassManagementModal';
 import { MultiClassParticipantModal } from './MultiClassParticipantModal';
 import { MultiClassTeamCreationModal } from './MultiClassTeamCreationModal';
 import {
@@ -27,7 +26,6 @@ import {
 } from '@dnd-kit/sortable';
 import { SortableEventCard } from './SortableEventCard';
 import { PracticeModeView } from './PracticeModeView';
-import { StudentRecordModal } from './StudentRecordModal';
 import { RecordHistoryView } from './RecordHistoryView';
 
 interface GradeViewProps {
@@ -39,10 +37,14 @@ interface GradeViewProps {
   onUpdateConfig: (config: GradeConfig) => void;
   onUpdateEvents: (events: CompetitionEvent[]) => void;
   competitionId: string;
-  userId: string; // 🆕 추가
+  userId: string;
+  // 🆕 App.tsx에서 관리하는 viewMode 및 콜백
+  viewMode: 'practice' | 'competition';
+  onModeToggle: (mode: 'practice' | 'competition') => void;
+  onClassManagementClick: () => void;
 }
 
-type TabType = 'EVENTS' | 'RECORDS' | 'RESULTS';
+type TabType = 'SETTINGS' | 'RECORDS' | 'RESULTS';
 type ViewModeType = 'competition' | 'practice';
 type EventSubTab = 'INDIVIDUAL' | 'PAIR' | 'TEAM';
 
@@ -56,12 +58,12 @@ export const GradeView: React.FC<GradeViewProps> = ({
   onUpdateEvents,
   competitionId,
   userId,
+  viewMode, // 🆕 App.tsx에서 전달받음
+  onModeToggle,
+  onClassManagementClick,
 }) => {
-  const [viewMode, setViewMode] = useState<ViewModeType>('practice');
-  const [activeTab, setActiveTab] = useState<TabType>('EVENTS');
+  const [activeTab, setActiveTab] = useState<TabType>('SETTINGS');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [isClassManagementOpen, setIsClassManagementOpen] = useState(false);
-  const [allClasses, setAllClasses] = useState<ClassTeam[]>([]);
   const [activeEventTab, setActiveEventTab] = useState<EventSubTab>('INDIVIDUAL');
 
   // 날짜 선택 state (오늘 날짜로 초기화)
@@ -77,9 +79,6 @@ export const GradeView: React.FC<GradeViewProps> = ({
   const [multiClassParticipantModalEvent, setMultiClassParticipantModalEvent] = useState<CompetitionEvent | null>(null);
   const [multiClassTeamModalEvent, setMultiClassTeamModalEvent] = useState<CompetitionEvent | null>(null);
 
-  // For Student Record Viewing
-  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
-
   // For Drag and Drop
   const [activeId, setActiveId] = useState<string | null>(null);
   const [selectedEventOrder, setSelectedEventOrder] = useState<string[]>([]);
@@ -91,31 +90,6 @@ export const GradeView: React.FC<GradeViewProps> = ({
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
-
-  // Subscribe to all classes when class management modal opens (실시간 업데이트)
-  useEffect(() => {
-    if (!isClassManagementOpen || !competitionId) {
-      return;
-    }
-
-    const setupSubscription = async () => {
-      const { subscribeToAllClasses } = await import('../services/firestore');
-      const unsubscribe = subscribeToAllClasses(userId, competitionId, (allClassesData) => {
-        setAllClasses(allClassesData);
-      });
-
-      // Cleanup: 모달이 닫히거나 컴포넌트가 언마운트될 때 구독 해제
-      return unsubscribe;
-    };
-
-    const unsubscribePromise = setupSubscription();
-
-    return () => {
-      unsubscribePromise.then(unsubscribe => {
-        if (unsubscribe) unsubscribe();
-      });
-    };
-  }, [isClassManagementOpen, competitionId]);
 
   // 기존 데이터를 날짜별 구조로 마이그레이션
   useEffect(() => {
@@ -233,23 +207,6 @@ export const GradeView: React.FC<GradeViewProps> = ({
       onUpdateClasses(classes.filter(c => c.id !== id));
     }
   };
-
-  const handleDeleteClass = useCallback(async (classId: string) => {
-    try {
-      const { deleteClass } = await import('../services/firestore');
-      await deleteClass(userId, classId);
-      // onUpdateClasses will be triggered by real-time listener in App.tsx
-    } catch (error) {
-      console.error('학급 삭제 중 오류:', error);
-      alert('학급 삭제에 실패했습니다. 다시 시도해주세요.');
-    }
-  }, [userId]);
-
-  const handleUpdateStudents = useCallback(async (classId: string, students: Student[]) => {
-    const { updateClassStudents } = await import('../services/firestore');
-    await updateClassStudents(userId, classId, students);
-    // onUpdateClasses will be triggered by real-time listener in App.tsx
-  }, [userId]);
 
   const handleOpenEventModal = (event: CompetitionEvent) => {
     if (event.type === 'INDIVIDUAL') {
@@ -627,7 +584,7 @@ export const GradeView: React.FC<GradeViewProps> = ({
 
   const renderTabs = () => {
     const tabs: { id: TabType; label: string; icon: React.ElementType }[] = [
-      { id: 'EVENTS', label: '경기 종목 선정', icon: Settings2 },
+      { id: 'SETTINGS', label: '경기 설정', icon: Settings2 },
       { id: 'RECORDS', label: '경기 기록 입력', icon: ClipboardList },
       { id: 'RESULTS', label: '경기 결과 종합', icon: Trophy },
     ];
@@ -652,41 +609,6 @@ export const GradeView: React.FC<GradeViewProps> = ({
           ))}
         </div>
 
-        {/* 우측 버튼들 */}
-        <div className="flex items-center gap-2 md:gap-3 py-2">
-          {/* 학급 관리 버튼 */}
-          <button
-            onClick={() => setIsClassManagementOpen(true)}
-            className="flex items-center gap-2 px-3 md:px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors shadow-sm text-sm"
-          >
-            <Users className="w-4 h-4" />
-            <span className="hidden sm:inline">학급 관리</span>
-          </button>
-
-          {/* 모드 토글 */}
-          <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
-            <button
-              onClick={() => setViewMode('practice')}
-              className={`px-2 md:px-3 py-1.5 rounded-md text-xs md:text-sm font-medium transition-all whitespace-nowrap ${
-                viewMode === 'practice'
-                  ? 'bg-white text-green-600 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              📝 연습
-            </button>
-            <button
-              onClick={() => setViewMode('competition')}
-              className={`px-2 md:px-3 py-1.5 rounded-md text-xs md:text-sm font-medium transition-all whitespace-nowrap ${
-                viewMode === 'competition'
-                  ? 'bg-white text-indigo-600 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              🏆 대회
-            </button>
-          </div>
-        </div>
       </div>
     );
   };
@@ -770,7 +692,7 @@ export const GradeView: React.FC<GradeViewProps> = ({
     </div>
   );
 
-  const renderEventsTab = () => {
+  const renderSettingsTab = () => {
     // 해당 날짜의 선택 정보
     const currentDateEvents = gradeConfig.dateEvents?.[selectedDate] || gradeConfig.events || {};
 
@@ -867,47 +789,63 @@ export const GradeView: React.FC<GradeViewProps> = ({
 
     return (
       <div className="flex flex-col h-full">
-        {/* Selected Events Navigation Bar with Drag and Drop */}
-        {activeEvents.length > 0 && (
-          <div className="bg-indigo-100/50 text-indigo-900 px-6 py-4 border-b border-indigo-200 shadow-sm">
-            <div className="flex items-center justify-between mb-2">
-              <h4 className="text-sm font-bold uppercase tracking-wider">선택된 종목</h4>
-              <span className="text-xs bg-indigo-200/60 px-3 py-1 rounded-full font-bold">
-                {activeEvents.length}개 종목
-              </span>
+        {/* 날짜 + 선택된 종목 통합 영역 */}
+        <div className="bg-gradient-to-r from-indigo-50 to-blue-50 px-6 py-3 border-b border-indigo-200">
+          <div className="flex flex-wrap items-center gap-4">
+            {/* 날짜 선택 */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <span className="text-lg">📅</span>
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="px-3 py-1.5 text-sm font-medium border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 bg-white"
+              />
             </div>
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragStart={handleDragStart}
-              onDragEnd={handleDragEnd}
-              onDragCancel={handleDragCancel}
-            >
-              <SortableContext items={selectedEventOrder} strategy={horizontalListSortingStrategy}>
-                <div className="flex flex-wrap gap-2">
-                  {activeEvents.map(evt => (
-                    <SortableEventCard
-                      key={evt.id}
-                      event={evt}
-                      onCopy={handleCopyEvent}
-                      onDelete={handleToggleEvent}
-                      onClick={handleOpenEventModal}
-                    />
-                  ))}
-                </div>
-              </SortableContext>
-              <DragOverlay>
-                {activeId ? (
-                  <div className="inline-flex items-center gap-2 bg-white/70 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-indigo-300 shadow-lg rotate-2 opacity-90">
-                    <span className="text-sm font-bold text-indigo-900">
-                      {activeEvents.find(e => e.id === activeId)?.name}
-                    </span>
-                  </div>
-                ) : null}
-              </DragOverlay>
-            </DndContext>
+
+            {/* 구분선 */}
+            {activeEvents.length > 0 && (
+              <div className="h-6 w-px bg-indigo-300 hidden sm:block" />
+            )}
+
+            {/* 선택된 종목 */}
+            {activeEvents.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">
+                <span className="text-sm font-bold text-slate-700 flex-shrink-0">선택된 종목:</span>
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragStart={handleDragStart}
+                  onDragEnd={handleDragEnd}
+                  onDragCancel={handleDragCancel}
+                >
+                  <SortableContext items={selectedEventOrder} strategy={horizontalListSortingStrategy}>
+                    <div className="flex flex-wrap gap-2">
+                      {activeEvents.map(evt => (
+                        <SortableEventCard
+                          key={evt.id}
+                          event={evt}
+                          onCopy={handleCopyEvent}
+                          onDelete={handleToggleEvent}
+                          onClick={handleOpenEventModal}
+                        />
+                      ))}
+                    </div>
+                  </SortableContext>
+                  <DragOverlay>
+                    {activeId ? (
+                      <div className="inline-flex items-center gap-2 bg-white/70 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-indigo-300 shadow-lg rotate-2 opacity-90">
+                        <span className="text-sm font-bold text-indigo-900">
+                          {activeEvents.find(e => e.id === activeId)?.name}
+                        </span>
+                      </div>
+                    ) : null}
+                  </DragOverlay>
+                </DndContext>
+              </div>
+            )}
           </div>
-        )}
+        </div>
 
         {/* Event Category Tabs */}
         <div className="flex border-b border-slate-200 bg-white px-6">
@@ -978,7 +916,7 @@ export const GradeView: React.FC<GradeViewProps> = ({
         <div className="flex-1 flex flex-col items-center justify-center p-12">
           <Settings2 className="w-12 h-12 text-slate-300 mb-4" />
           <p className="text-slate-500 font-medium">선택된 종목이 없습니다.</p>
-          <button onClick={() => setActiveTab('EVENTS')} className="text-indigo-600 font-semibold mt-2 hover:underline">
+          <button onClick={() => setActiveTab('SETTINGS')} className="text-indigo-600 font-semibold mt-2 hover:underline">
             종목 선정 탭으로 이동
           </button>
         </div>
@@ -1018,10 +956,7 @@ export const GradeView: React.FC<GradeViewProps> = ({
           <>
             {/* Timer Area - Fixed at top */}
             <div className="flex-shrink-0 p-6 bg-slate-50 border-b border-slate-200">
-              <CompetitionTimer
-                selectedDate={selectedDate}
-                onDateChange={setSelectedDate}
-              />
+              <CompetitionTimer showDatePicker={false} />
             </div>
 
             {/* Scoreboard + Matrix Area - Independent scroll */}
@@ -1253,7 +1188,7 @@ export const GradeView: React.FC<GradeViewProps> = ({
       <div className="flex-1 overflow-auto bg-slate-50 scroll-smooth">
         {viewMode === 'competition' ? (
           <>
-            {activeTab === 'EVENTS' && renderEventsTab()}
+            {activeTab === 'SETTINGS' && renderSettingsTab()}
             {activeTab === 'RECORDS' && renderRecordsTab()}
             {activeTab === 'RESULTS' && renderResultsTab()}
           </>
@@ -1263,9 +1198,6 @@ export const GradeView: React.FC<GradeViewProps> = ({
             grade={grade}
             events={events}
             classes={gradeClasses}
-            onClassManagementClick={() => setIsClassManagementOpen(true)}
-            onModeToggle={setViewMode}
-            currentMode={viewMode}
           />
         )}
       </div>
@@ -1307,46 +1239,6 @@ export const GradeView: React.FC<GradeViewProps> = ({
         />
       )}
 
-      {/* Class Management Modal */}
-      {isClassManagementOpen && (
-        <ClassManagementModal
-          competitionId={competitionId}
-          allClasses={allClasses}
-          onClose={() => setIsClassManagementOpen(false)}
-          onAddClass={handleAddClass}
-          onDeleteClass={handleDeleteClass}
-          onUpdateStudents={handleUpdateStudents}
-          onShowStudentRecord={(studentId) => setSelectedStudentId(studentId)}
-        />
-      )}
-
-      {/* Student Record Modal */}
-      {selectedStudentId && (() => {
-        // Find the student across all classes
-        let foundStudent: Student | undefined;
-        let foundClass: ClassTeam | undefined;
-
-        for (const cls of allClasses) {
-          const student = cls.students.find(s => s.id === selectedStudentId);
-          if (student) {
-            foundStudent = student;
-            foundClass = cls;
-            break;
-          }
-        }
-
-        if (!foundStudent || !foundClass) return null;
-
-        return (
-          <StudentRecordModal
-            competitionId={competitionId}
-            gradeId={`grade_${grade}`}
-            student={foundStudent}
-            events={events}
-            onClose={() => setSelectedStudentId(null)}
-          />
-        );
-      })()}
     </div>
   );
 };

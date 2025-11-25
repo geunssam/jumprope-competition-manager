@@ -4,24 +4,29 @@ import { SettingsView } from './components/SettingsView';
 import { GradeView } from './components/GradeView';
 import { LoginPage } from './components/LoginPage';
 import PrivacyConsentGuard from './components/PrivacyConsentGuard';
+import { OfflineIndicator } from './components/OfflineIndicator';
+import { ClassManagementModal } from './components/ClassManagementModal';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import './utils/runMigration'; // 마이그레이션 함수 로드
 import {
   subscribeToEvents,
   subscribeToGradeClasses,
+  subscribeToAllClasses,
   getMyCompetitions,
   createCompetition,
   getGradeConfig,
   updateGradeConfig,
   batchUpdateClasses,
-  batchUpdateEvents
+  batchUpdateEvents,
+  deleteClass,
+  updateClassStudents
 } from './services/firestore';
 import {
   migrateLocalStorageToFirestore,
   hasLocalStorageData,
   hasMigratedData
 } from './utils/migration';
-import { CompetitionEvent, ClassTeam, GradeConfig, ViewMode } from './types';
+import { CompetitionEvent, ClassTeam, GradeConfig, ViewMode, Student } from './types';
 import { INITIAL_EVENTS } from './constants';
 import { writeBatch, doc } from 'firebase/firestore';
 import { db } from './lib/firebase';
@@ -53,6 +58,13 @@ const AppContent: React.FC = () => {
     }
     return false;
   });
+
+  // 🆕 연습/대회 모드 상태 (App 레벨로 끌어올림)
+  const [practiceMode, setPracticeMode] = useState<'practice' | 'competition'>('practice');
+
+  // 🆕 학급 관리 모달 상태
+  const [isClassManagementOpen, setIsClassManagementOpen] = useState(false);
+  const [allClasses, setAllClasses] = useState<ClassTeam[]>([]);
 
   // 0. 캐시 버전 체크 (앱 시작 시 한 번만)
   useEffect(() => {
@@ -261,6 +273,19 @@ const AppContent: React.FC = () => {
     loadConfigs();
   }, [user, currentCompetitionId]);
 
+  // 5. 🆕 학급 관리 모달용 전체 학급 구독
+  useEffect(() => {
+    if (!isClassManagementOpen || !user || !currentCompetitionId) {
+      return;
+    }
+
+    const unsubscribe = subscribeToAllClasses(user.uid, currentCompetitionId, (allClassesData) => {
+      setAllClasses(allClassesData);
+    });
+
+    return () => unsubscribe();
+  }, [isClassManagementOpen, user, currentCompetitionId]);
+
   // --- Handlers ---
   const handleSelectGrade = (grade: number) => {
     setCurrentGrade(grade);
@@ -300,6 +325,28 @@ const AppContent: React.FC = () => {
     // 나머지 업데이트
     await batchUpdateEvents(user.uid, currentCompetitionId, updatedEvents);
     // 실시간 리스너가 자동으로 업데이트
+  };
+
+  // 🆕 학급 관리 모달 핸들러들
+  const handleAddClass = async (classData: Omit<ClassTeam, 'id' | 'results'>) => {
+    if (!user || !currentCompetitionId) return;
+    const { addClass } = await import('./services/firestore');
+    await addClass(user.uid, currentCompetitionId, classData);
+  };
+
+  const handleDeleteClass = async (classId: string) => {
+    if (!user || !currentCompetitionId) return;
+    await deleteClass(user.uid, classId);
+  };
+
+  const handleUpdateStudents = async (classId: string, students: Student[]) => {
+    if (!user || !currentCompetitionId) return;
+    await updateClassStudents(user.uid, classId, students);
+  };
+
+  // 🆕 모드 토글 핸들러
+  const handleModeToggle = () => {
+    setPracticeMode(prev => prev === 'practice' ? 'competition' : 'practice');
   };
 
   // Get config for current grade
@@ -342,6 +389,7 @@ const AppContent: React.FC = () => {
   return (
     <PrivacyConsentGuard>
       <div className="flex h-screen bg-slate-50 overflow-hidden">
+        <OfflineIndicator />
         <Sidebar
           currentGrade={currentView === ViewMode.GRADE ? currentGrade : null}
           onSelectGrade={handleSelectGrade}
@@ -349,6 +397,9 @@ const AppContent: React.FC = () => {
           isSettingsActive={currentView === ViewMode.SETTINGS}
           isCollapsed={isSidebarCollapsed}
           onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+          currentMode={practiceMode}
+          onModeToggle={handleModeToggle}
+          onClassManagementClick={() => setIsClassManagementOpen(true)}
         />
 
         <main className="flex-1 flex flex-col overflow-hidden relative">
@@ -369,10 +420,26 @@ const AppContent: React.FC = () => {
               onUpdateClasses={handleUpdateClasses}
               onUpdateConfig={handleUpdateGradeConfig}
               onUpdateEvents={handleUpdateEvents}
+              viewMode={practiceMode}
+              onModeToggle={setPracticeMode}
+              onClassManagementClick={() => setIsClassManagementOpen(true)}
             />
           )}
         </main>
       </div>
+
+      {/* 🆕 학급 관리 모달 (App 레벨로 이동) */}
+      {isClassManagementOpen && currentCompetitionId && (
+        <ClassManagementModal
+          competitionId={currentCompetitionId}
+          allClasses={allClasses}
+          onClose={() => setIsClassManagementOpen(false)}
+          onAddClass={handleAddClass}
+          onDeleteClass={handleDeleteClass}
+          onUpdateStudents={handleUpdateStudents}
+          onShowStudentRecord={() => {}} // 학생 기록 보기는 GradeView에서 처리
+        />
+      )}
     </PrivacyConsentGuard>
   );
 };

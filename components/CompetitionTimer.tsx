@@ -2,13 +2,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Timer, Play, Pause, RotateCcw, X, Music, Calendar } from 'lucide-react';
 
 interface CompetitionTimerProps {
-  selectedDate: string;
-  onDateChange: (date: string) => void;
+  selectedDate?: string;
+  onDateChange?: (date: string) => void;
+  showDatePicker?: boolean;
 }
 
 export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
   selectedDate,
-  onDateChange
+  onDateChange,
+  showDatePicker = true
 }) => {
   const [minutes, setMinutes] = useState<number>(0);
   const [seconds, setSeconds] = useState<number>(30);
@@ -352,23 +354,25 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
       {/* 컴팩트 모드 */}
       {!isFullscreen && (
         <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 mb-6 shadow-sm border border-blue-100">
-          <div className="grid grid-cols-10 gap-4 items-center">
-            {/* 날짜 선택기 영역 - 20% (2 cols) */}
-            <div className="col-span-2 flex flex-col gap-2">
-              <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-indigo-600" />
-                경기 날짜
-              </label>
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => onDateChange(e.target.value)}
-                className="px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
-              />
-            </div>
+          <div className={`${showDatePicker ? 'grid grid-cols-10 gap-4' : 'flex'} items-center`}>
+            {/* 날짜 선택기 영역 - 20% (2 cols) - showDatePicker일 때만 표시 */}
+            {showDatePicker && (
+              <div className="col-span-2 flex flex-col gap-2">
+                <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-indigo-600" />
+                  경기 날짜
+                </label>
+                <input
+                  type="date"
+                  value={selectedDate || ''}
+                  onChange={(e) => onDateChange?.(e.target.value)}
+                  className="px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                />
+              </div>
+            )}
 
-            {/* 타이머 영역 - 80% (8 cols) */}
-            <div className="col-span-8 flex items-center justify-between gap-4">
+            {/* 타이머 영역 - showDatePicker 여부에 따라 레이아웃 변경 */}
+            <div className={`${showDatePicker ? 'col-span-8' : 'flex-1'} flex items-center justify-between gap-4`}>
               {/* 타이머 아이콘과 제목 */}
               <div className="flex items-center gap-2">
                 <Timer className="w-4 h-4 text-indigo-600" />

@@ -6,12 +6,10 @@ import {
   getNextSessionNumber,
   recalculateClassStats
 } from '../services/firestore';
-import { Calendar, Save, TrendingUp, BarChart3, ClipboardList, Users } from 'lucide-react';
-import { CompetitionTimer } from './CompetitionTimer';
+import { Save, TrendingUp, BarChart3, ClipboardList } from 'lucide-react';
+import { SessionNavBar } from './SessionNavBar';
 import { StudentRecordModal } from './StudentRecordModal';
 import { RecordHistoryView } from './RecordHistoryView';
-import DatePicker from 'react-datepicker';
-import 'react-datepicker/dist/react-datepicker.css';
 
 interface PracticeModeViewProps {
   competitionId: string;
@@ -19,9 +17,6 @@ interface PracticeModeViewProps {
   events: CompetitionEvent[];
   classes: ClassTeam[];
   onStudentDetailClick?: (studentId: string) => void;
-  onClassManagementClick?: () => void;
-  onModeToggle?: (mode: 'practice' | 'competition') => void;
-  currentMode?: 'practice' | 'competition';
 }
 
 export const PracticeModeView: React.FC<PracticeModeViewProps> = ({
@@ -30,9 +25,6 @@ export const PracticeModeView: React.FC<PracticeModeViewProps> = ({
   events,
   classes,
   onStudentDetailClick,
-  onClassManagementClick,
-  onModeToggle,
-  currentMode = 'practice'
 }) => {
   // Date 객체로 날짜 관리
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -228,109 +220,24 @@ export const PracticeModeView: React.FC<PracticeModeViewProps> = ({
             기록 조회
           </button>
         </div>
-
-        {/* 우측 버튼들 */}
-        <div className="flex items-center gap-2 md:gap-3 py-2">
-          {/* 학급 관리 버튼 */}
-          {onClassManagementClick && (
-            <button
-              onClick={onClassManagementClick}
-              className="flex items-center gap-2 px-3 md:px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors shadow-sm text-sm"
-            >
-              <Users className="w-4 h-4" />
-              <span className="hidden sm:inline">학급 관리</span>
-            </button>
-          )}
-
-          {/* 모드 토글 */}
-          {onModeToggle && (
-            <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
-              <button
-                onClick={() => onModeToggle('practice')}
-                className={`px-2 md:px-3 py-1.5 rounded-md text-xs md:text-sm font-medium transition-all whitespace-nowrap ${
-                  currentMode === 'practice'
-                    ? 'bg-white text-green-600 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                📝 연습
-              </button>
-              <button
-                onClick={() => onModeToggle('competition')}
-                className={`px-2 md:px-3 py-1.5 rounded-md text-xs md:text-sm font-medium transition-all whitespace-nowrap ${
-                  currentMode === 'competition'
-                    ? 'bg-white text-indigo-600 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                🏆 대회
-              </button>
-            </div>
-          )}
-        </div>
       </div>
 
       {/* Content */}
       <div className="flex-1 overflow-auto">
         {activeTab === 'input' ? (
           <div className="space-y-6 p-6">
-            {/* 타이머 */}
-            <CompetitionTimer />
-
-            {/* 날짜 및 세션 선택 */}
-            <div className="bg-white p-4 rounded-lg shadow-md">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-gray-700 whitespace-nowrap">날짜</span>
-            <DatePicker
-              selected={selectedDate}
-              onChange={(date: Date | null) => {
-                if (date) {
-                  setSelectedDate(date);
-                }
-              }}
-              dateFormat="yyyy-MM-dd"
-              className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 cursor-pointer"
-              calendarClassName="shadow-lg"
+            {/* 통합 세션 네비게이션 바 */}
+            <SessionNavBar
+              selectedDate={selectedDate}
+              onDateChange={setSelectedDate}
+              classes={classes}
+              selectedClassId={selectedClassId}
+              onClassChange={setSelectedClassId}
+              events={events}
+              selectedEventId={selectedEventId}
+              onEventChange={setSelectedEventId}
+              sessionNumber={sessionNumber}
             />
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-gray-700 whitespace-nowrap">학급</span>
-            <select
-              value={selectedClassId}
-              onChange={(e) => setSelectedClassId(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500"
-            >
-              {classes.map(cls => (
-                <option key={cls.id} value={cls.id}>
-                  {cls.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-gray-700 whitespace-nowrap">종목</span>
-            <select
-              value={selectedEventId}
-              onChange={(e) => setSelectedEventId(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500"
-            >
-              {events.map(event => (
-                <option key={event.id} value={event.id}>
-                  {event.name} ({event.defaultTimeLimit}초)
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex items-center gap-2 text-sm text-gray-600 ml-auto">
-            <TrendingUp className="w-4 h-4" />
-            <span>오늘의 세션: {sessionNumber}회차</span>
-          </div>
-        </div>
-      </div>
 
       {/* 학생 기록 입력 */}
       {selectedClass && (

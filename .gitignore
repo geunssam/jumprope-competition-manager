@@ -7,3 +7,4 @@ dist/
 .firebase/
 auth_export.json
 add-authorized-domain.mjs
+.vercel
