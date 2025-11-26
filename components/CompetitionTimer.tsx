@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Timer, Play, Pause, RotateCcw, X, Music, Calendar } from 'lucide-react';
 
 interface CompetitionTimerProps {
@@ -6,6 +6,115 @@ interface CompetitionTimerProps {
   onDateChange?: (date: string) => void;
   showDatePicker?: boolean;
 }
+
+// Web Audio API 기반 오디오 매니저 (iOS 호환)
+class AudioManager {
+  private audioContext: AudioContext | null = null;
+  private audioBuffers: Map<string, AudioBuffer> = new Map();
+  private currentSource: AudioBufferSourceNode | null = null;
+  private isUnlocked = false;
+  private loadingPromises: Map<string, Promise<AudioBuffer>> = new Map();
+
+  // AudioContext 초기화
+  private getContext(): AudioContext {
+    if (!this.audioContext) {
+      this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    return this.audioContext;
+  }
+
+  // iOS에서 오디오 unlock (첫 사용자 상호작용에서 호출)
+  async unlock(): Promise<void> {
+    if (this.isUnlocked) return;
+
+    const ctx = this.getContext();
+
+    // suspended 상태면 resume
+    if (ctx.state === 'suspended') {
+      await ctx.resume();
+    }
+
+    // 무음 버퍼 재생으로 완전히 unlock
+    const buffer = ctx.createBuffer(1, 1, 22050);
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+    source.start(0);
+
+    this.isUnlocked = true;
+    console.log('🔓 Audio unlocked');
+  }
+
+  // 오디오 파일 로드 (캐싱)
+  async load(url: string): Promise<AudioBuffer> {
+    // 이미 로드됨
+    if (this.audioBuffers.has(url)) {
+      return this.audioBuffers.get(url)!;
+    }
+
+    // 로딩 중이면 기존 Promise 반환
+    if (this.loadingPromises.has(url)) {
+      return this.loadingPromises.get(url)!;
+    }
+
+    const loadPromise = (async () => {
+      const ctx = this.getContext();
+      const response = await fetch(url);
+      const arrayBuffer = await response.arrayBuffer();
+      const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+      this.audioBuffers.set(url, audioBuffer);
+      this.loadingPromises.delete(url);
+      console.log(`📦 Audio loaded: ${url}`);
+      return audioBuffer;
+    })();
+
+    this.loadingPromises.set(url, loadPromise);
+    return loadPromise;
+  }
+
+  // 오디오 재생 (Promise 반환 - 재생 시작 시점 감지 가능)
+  async play(url: string): Promise<{ startTime: number }> {
+    await this.unlock();
+
+    const ctx = this.getContext();
+    const buffer = await this.load(url);
+
+    // 기존 재생 중지
+    this.stop();
+
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+
+    const startTime = ctx.currentTime;
+    source.start(0);
+    this.currentSource = source;
+
+    console.log(`▶️ Audio playing: ${url}`);
+    return { startTime };
+  }
+
+  // 재생 중지
+  stop(): void {
+    if (this.currentSource) {
+      try {
+        this.currentSource.stop();
+      } catch (e) {
+        // 이미 중지됨
+      }
+      this.currentSource = null;
+      console.log('⏹️ Audio stopped');
+    }
+  }
+
+  // 현재 컨텍스트 시간
+  getCurrentTime(): number {
+    return this.audioContext?.currentTime || 0;
+  }
+}
+
+// 싱글톤 인스턴스
+const audioManager = new AudioManager();
 
 export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
   selectedDate,
@@ -17,46 +126,60 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
   const [remainingSeconds, setRemainingSeconds] = useState<number>(30);
   const [timerState, setTimerState] = useState<'idle' | 'ready' | 'running' | 'paused' | 'finished'>('idle');
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [audioReady, setAudioReady] = useState<boolean>(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const audio30Ref = useRef<HTMLAudioElement | null>(null);
-  const audio60Ref = useRef<HTMLAudioElement | null>(null);
   const readyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  // 종료 시간 기준으로 변경 (더 정확한 카운트다운)
   const targetEndTimeRef = useRef<number | null>(null);
-  // 일시정지 시 남은 시간 저장용
   const pausedRemainingRef = useRef<number | null>(null);
 
   // 음원 내 비프음 오프셋 (ms) - 음원 파일 분석 결과
-  const BEEP_OFFSET_MS = 1800; // 음원 시작 후 1.8초에 첫 비프음
+  const BEEP_OFFSET_MS = 1800;
 
-  // iOS/iPadOS 감지 (iPadOS는 Mac처럼 보이지만 터치 지원)
+  // iOS/iPadOS 감지
   const isIOS = typeof navigator !== 'undefined' && (
     /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
   );
 
-  // iOS 추가 지연 (onplaying 이벤트 → 실제 스피커 출력 사이 지연)
-  const IOS_AUDIO_OUTPUT_DELAY = 500; // ms
+  // iOS 추가 지연
+  const IOS_AUDIO_OUTPUT_DELAY = isIOS ? 300 : 0;
 
-  // 오디오 미리 로드
+  // 오디오 미리 로드 및 unlock
   useEffect(() => {
-    audio30Ref.current = new Audio('/sounds/30sec.mp3');
-    audio60Ref.current = new Audio('/sounds/60sec.mp3');
-
-    // 오디오 프리로드
-    audio30Ref.current.preload = 'auto';
-    audio60Ref.current.preload = 'auto';
+    const preloadAudio = async () => {
+      try {
+        await Promise.all([
+          audioManager.load('/sounds/30sec.mp3'),
+          audioManager.load('/sounds/60sec.mp3')
+        ]);
+        setAudioReady(true);
+        console.log('✅ All audio preloaded');
+      } catch (e) {
+        console.error('Audio preload failed:', e);
+      }
+    };
+    preloadAudio();
 
     return () => {
-      if (audio30Ref.current) {
-        audio30Ref.current.pause();
-        audio30Ref.current = null;
-      }
-      if (audio60Ref.current) {
-        audio60Ref.current.pause();
-        audio60Ref.current = null;
-      }
+      audioManager.stop();
+    };
+  }, []);
+
+  // 첫 터치/클릭에서 오디오 unlock
+  useEffect(() => {
+    const handleFirstInteraction = async () => {
+      await audioManager.unlock();
+      // 이벤트 리스너 제거
+      document.removeEventListener('touchstart', handleFirstInteraction);
+      document.removeEventListener('click', handleFirstInteraction);
+    };
+
+    document.addEventListener('touchstart', handleFirstInteraction, { once: true });
+    document.addEventListener('click', handleFirstInteraction, { once: true });
+
+    return () => {
+      document.removeEventListener('touchstart', handleFirstInteraction);
+      document.removeEventListener('click', handleFirstInteraction);
     };
   }, []);
 
@@ -110,131 +233,85 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
     }
   };
 
-  // 분 직접 입력
-  const handleMinuteChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (timerState === 'idle') {
-      const val = parseInt(e.target.value) || 0;
-      setMinutes(Math.min(Math.max(val, 0), 99));
-    }
-  };
-
-  // 초 직접 입력
-  const handleSecondChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (timerState === 'idle') {
-      const val = parseInt(e.target.value) || 0;
-      setSeconds(Math.min(Math.max(val, 0), 59));
-    }
-  };
-
-  // 음원 재생
-  const playAudio = (audioPath: string) => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-    }
-    audioRef.current = new Audio(audioPath);
-    audioRef.current.play().catch(e => console.log('Audio play failed:', e));
-  };
-
-  // 음원 정지
-  const stopAudio = () => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-    }
-  };
-
   // 30초 음원 프리셋
-  const handle30SecPreset = () => {
+  const handle30SecPreset = useCallback(async () => {
     setMinutes(0);
     setSeconds(30);
     setRemainingSeconds(30);
     setTimerState('ready');
     setIsFullscreen(true);
 
-    const audio = audio30Ref.current;
-    if (!audio) return;
+    try {
+      // 먼저 unlock 보장
+      await audioManager.unlock();
 
-    audio.currentTime = 0;
+      // 오디오 재생
+      await audioManager.play('/sounds/30sec.mp3');
 
-    // 실제 오디오 재생 시작 시점 감지 (기기별 지연 자동 처리)
-    const onPlaying = () => {
-      audio.removeEventListener('playing', onPlaying);
-
-      // 비프음 시점에 타이머 시작 (기본 오프셋 + iOS 추가 지연)
-      const totalDelay = BEEP_OFFSET_MS + (isIOS ? IOS_AUDIO_OUTPUT_DELAY : 0);
+      // 비프음 시점에 타이머 시작
+      const totalDelay = BEEP_OFFSET_MS + IOS_AUDIO_OUTPUT_DELAY;
 
       readyTimeoutRef.current = setTimeout(() => {
         setTimerState('running');
-        // 종료 시간 설정: 현재 시간 + 30초
         targetEndTimeRef.current = Date.now() + 30000;
       }, totalDelay);
-    };
 
-    audio.addEventListener('playing', onPlaying);
-    audio.play().catch(e => {
-      console.log('Audio play failed:', e);
-      audio.removeEventListener('playing', onPlaying);
-    });
-  };
+    } catch (e) {
+      console.error('30sec preset failed:', e);
+      // 실패해도 타이머는 시작
+      setTimerState('running');
+      targetEndTimeRef.current = Date.now() + 30000;
+    }
+  }, [IOS_AUDIO_OUTPUT_DELAY]);
 
   // 60초 음원 프리셋
-  const handle60SecPreset = () => {
+  const handle60SecPreset = useCallback(async () => {
     setMinutes(1);
     setSeconds(0);
     setRemainingSeconds(60);
     setTimerState('ready');
     setIsFullscreen(true);
 
-    const audio = audio60Ref.current;
-    if (!audio) return;
+    try {
+      // 먼저 unlock 보장
+      await audioManager.unlock();
 
-    audio.currentTime = 0;
+      // 오디오 재생
+      await audioManager.play('/sounds/60sec.mp3');
 
-    // 실제 오디오 재생 시작 시점 감지 (기기별 지연 자동 처리)
-    const onPlaying = () => {
-      audio.removeEventListener('playing', onPlaying);
-
-      // 비프음 시점에 타이머 시작 (기본 오프셋 + iOS 추가 지연)
-      const totalDelay = BEEP_OFFSET_MS + (isIOS ? IOS_AUDIO_OUTPUT_DELAY : 0);
+      // 비프음 시점에 타이머 시작
+      const totalDelay = BEEP_OFFSET_MS + IOS_AUDIO_OUTPUT_DELAY;
 
       readyTimeoutRef.current = setTimeout(() => {
         setTimerState('running');
-        // 종료 시간 설정: 현재 시간 + 60초
         targetEndTimeRef.current = Date.now() + 60000;
       }, totalDelay);
-    };
 
-    audio.addEventListener('playing', onPlaying);
-    audio.play().catch(e => {
-      console.log('Audio play failed:', e);
-      audio.removeEventListener('playing', onPlaying);
-    });
-  };
+    } catch (e) {
+      console.error('60sec preset failed:', e);
+      // 실패해도 타이머는 시작
+      setTimerState('running');
+      targetEndTimeRef.current = Date.now() + 60000;
+    }
+  }, [IOS_AUDIO_OUTPUT_DELAY]);
 
   // 타이머 일시정지
   const pauseTimer = () => {
-    // 현재 남은 시간 계산 및 저장
     if (targetEndTimeRef.current) {
       const remaining = Math.ceil((targetEndTimeRef.current - Date.now()) / 1000);
       pausedRemainingRef.current = Math.max(0, remaining);
     }
     setTimerState('paused');
-    // 미리 로드된 오디오들도 정지
-    if (audio30Ref.current) audio30Ref.current.pause();
-    if (audio60Ref.current) audio60Ref.current.pause();
-    stopAudio();
+    audioManager.stop();
     targetEndTimeRef.current = null;
   };
 
   // 타이머 재개
   const resumeTimer = () => {
-    // 저장된 남은 시간으로 새 종료 시간 설정
     const remaining = pausedRemainingRef.current ?? remainingSeconds;
     targetEndTimeRef.current = Date.now() + (remaining * 1000);
     pausedRemainingRef.current = null;
     setTimerState('running');
-    // 음원은 재개하지 않음 (싱크 어려움)
   };
 
   // 타이머 리셋
@@ -242,16 +319,7 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
     setTimerState('idle');
     setRemainingSeconds(totalSeconds);
     setIsFullscreen(false);
-    // 미리 로드된 오디오들도 정지
-    if (audio30Ref.current) {
-      audio30Ref.current.pause();
-      audio30Ref.current.currentTime = 0;
-    }
-    if (audio60Ref.current) {
-      audio60Ref.current.pause();
-      audio60Ref.current.currentTime = 0;
-    }
-    stopAudio();
+    audioManager.stop();
     targetEndTimeRef.current = null;
     pausedRemainingRef.current = null;
     if (intervalRef.current) {
@@ -268,16 +336,12 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
   const closeFullscreen = () => {
     setIsFullscreen(false);
     if (timerState === 'running' || timerState === 'ready') {
-      // 현재 남은 시간 저장
       if (targetEndTimeRef.current) {
         const remaining = Math.ceil((targetEndTimeRef.current - Date.now()) / 1000);
         pausedRemainingRef.current = Math.max(0, remaining);
       }
       setTimerState('paused');
-      // 미리 로드된 오디오들도 정지
-      if (audio30Ref.current) audio30Ref.current.pause();
-      if (audio60Ref.current) audio60Ref.current.pause();
-      stopAudio();
+      audioManager.stop();
       targetEndTimeRef.current = null;
     }
     if (readyTimeoutRef.current) {
@@ -293,12 +357,9 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
     }
   }, [totalSeconds, timerState]);
 
-  // 카운트다운 로직 (종료 시간 기준 + Math.ceil로 정확한 1초 간격)
+  // 카운트다운 로직
   useEffect(() => {
     if (timerState === 'running') {
-      // 음원 프리셋에서 이미 targetEndTime 설정됨
-      // 수동 재개인 경우 resumeTimer에서 설정됨
-      // 그 외의 경우 (직접 시작) - 현재 remainingSeconds 기준으로 설정
       if (targetEndTimeRef.current === null) {
         targetEndTimeRef.current = Date.now() + (remainingSeconds * 1000);
       }
@@ -307,12 +368,9 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
         if (targetEndTimeRef.current === null) return;
 
         const now = Date.now();
-        // Math.ceil 사용: 29001ms 남음 → 30초 표시, 29000ms 남음 → 29초 표시
-        // 이렇게 하면 "30"이 정확히 1초간 표시된 후 "29"로 전환
         const remaining = Math.ceil((targetEndTimeRef.current - now) / 1000);
 
         if (remaining <= 0) {
-          // 타이머 종료
           setRemainingSeconds(0);
           setTimerState('finished');
           if (intervalRef.current) {
@@ -321,19 +379,17 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
           }
           targetEndTimeRef.current = null;
 
-          // 진동 (모바일)
           if (navigator.vibrate) {
             navigator.vibrate([200, 100, 200]);
           }
 
-          // 2초 후 자동으로 컴팩트 모드로 복귀
           setTimeout(() => {
             setIsFullscreen(false);
           }, 2000);
         } else {
           setRemainingSeconds(remaining);
         }
-      }, 50); // 50ms마다 체크하여 더 정확한 전환
+      }, 50);
     } else {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
@@ -347,7 +403,7 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
         intervalRef.current = null;
       }
     };
-  }, [timerState]); // remainingSeconds 의존성 제거 - interval 재생성 방지
+  }, [timerState]);
 
   return (
     <>
@@ -355,7 +411,7 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
       {!isFullscreen && (
         <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 mb-6 shadow-sm border border-blue-100">
           <div className={`${showDatePicker ? 'grid grid-cols-10 gap-4' : 'flex'} items-center`}>
-            {/* 날짜 선택기 영역 - 20% (2 cols) - showDatePicker일 때만 표시 */}
+            {/* 날짜 선택기 영역 */}
             {showDatePicker && (
               <div className="col-span-2 flex flex-col gap-2">
                 <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
@@ -371,7 +427,7 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
               </div>
             )}
 
-            {/* 타이머 영역 - showDatePicker 여부에 따라 레이아웃 변경 */}
+            {/* 타이머 영역 */}
             <div className={`${showDatePicker ? 'col-span-8' : 'flex-1'} flex items-center justify-between gap-4`}>
               {/* 타이머 아이콘과 제목 */}
               <div className="flex items-center gap-2">
@@ -379,99 +435,99 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
                 <h3 className="text-xs font-bold text-slate-900">타이머</h3>
               </div>
 
-            {/* 시간 조절 영역 */}
-            <div className="flex items-center gap-1.5">
-              {/* -1분 버튼 */}
-              <button
-                onClick={decreaseMinute}
-                className="w-10 h-7 flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-700 rounded border border-slate-300 transition-colors text-xs font-medium touch-manipulation active:bg-slate-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={timerState !== 'idle'}
-              >
-                -1분
-              </button>
-              {/* -10초 버튼 */}
-              <button
-                onClick={decreaseSecond}
-                className="w-10 h-7 flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-700 rounded border border-slate-300 transition-colors text-xs font-medium touch-manipulation active:bg-slate-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={timerState !== 'idle'}
-              >
-                -10초
-              </button>
-              {/* -1초 버튼 */}
-              <button
-                onClick={() => {
-                  if (timerState === 'idle') {
-                    const total = minutes * 60 + seconds;
-                    if (total > 0) {
-                      const newTotal = total - 1;
+              {/* 시간 조절 영역 */}
+              <div className="flex items-center gap-1.5">
+                {/* -1분 버튼 */}
+                <button
+                  onClick={decreaseMinute}
+                  className="w-10 h-7 flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-700 rounded border border-slate-300 transition-colors text-xs font-medium touch-manipulation active:bg-slate-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={timerState !== 'idle'}
+                >
+                  -1분
+                </button>
+                {/* -10초 버튼 */}
+                <button
+                  onClick={decreaseSecond}
+                  className="w-10 h-7 flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-700 rounded border border-slate-300 transition-colors text-xs font-medium touch-manipulation active:bg-slate-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={timerState !== 'idle'}
+                >
+                  -10초
+                </button>
+                {/* -1초 버튼 */}
+                <button
+                  onClick={() => {
+                    if (timerState === 'idle') {
+                      const total = minutes * 60 + seconds;
+                      if (total > 0) {
+                        const newTotal = total - 1;
+                        setMinutes(Math.floor(newTotal / 60));
+                        setSeconds(newTotal % 60);
+                      }
+                    }
+                  }}
+                  className="w-10 h-7 flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-700 rounded border border-slate-300 transition-colors text-xs font-medium touch-manipulation active:bg-slate-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={timerState !== 'idle'}
+                >
+                  -1초
+                </button>
+
+                {/* 시간 디스플레이 */}
+                <div className="text-xl font-black text-indigo-700 px-2">
+                  {formatTime(totalSeconds)}
+                </div>
+
+                {/* +1초 버튼 */}
+                <button
+                  onClick={() => {
+                    if (timerState === 'idle') {
+                      const total = minutes * 60 + seconds;
+                      const newTotal = total + 1;
                       setMinutes(Math.floor(newTotal / 60));
                       setSeconds(newTotal % 60);
                     }
-                  }
-                }}
-                className="w-10 h-7 flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-700 rounded border border-slate-300 transition-colors text-xs font-medium touch-manipulation active:bg-slate-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={timerState !== 'idle'}
-              >
-                -1초
-              </button>
-
-              {/* 시간 디스플레이 */}
-              <div className="text-xl font-black text-indigo-700 px-2">
-                {formatTime(totalSeconds)}
+                  }}
+                  className="w-10 h-7 flex items-center justify-center bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded border border-indigo-300 transition-colors text-xs font-medium touch-manipulation active:bg-indigo-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={timerState !== 'idle'}
+                >
+                  +1초
+                </button>
+                {/* +10초 버튼 */}
+                <button
+                  onClick={increaseSecond}
+                  className="w-10 h-7 flex items-center justify-center bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded border border-indigo-300 transition-colors text-xs font-medium touch-manipulation active:bg-indigo-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={timerState !== 'idle'}
+                >
+                  +10초
+                </button>
+                {/* +1분 버튼 */}
+                <button
+                  onClick={increaseMinute}
+                  className="w-10 h-7 flex items-center justify-center bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded border border-indigo-300 transition-colors text-xs font-medium touch-manipulation active:bg-indigo-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={timerState !== 'idle'}
+                >
+                  +1분
+                </button>
               </div>
 
-              {/* +1초 버튼 */}
-              <button
-                onClick={() => {
-                  if (timerState === 'idle') {
-                    const total = minutes * 60 + seconds;
-                    const newTotal = total + 1;
-                    setMinutes(Math.floor(newTotal / 60));
-                    setSeconds(newTotal % 60);
-                  }
-                }}
-                className="w-10 h-7 flex items-center justify-center bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded border border-indigo-300 transition-colors text-xs font-medium touch-manipulation active:bg-indigo-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={timerState !== 'idle'}
-              >
-                +1초
-              </button>
-              {/* +10초 버튼 */}
-              <button
-                onClick={increaseSecond}
-                className="w-10 h-7 flex items-center justify-center bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded border border-indigo-300 transition-colors text-xs font-medium touch-manipulation active:bg-indigo-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={timerState !== 'idle'}
-              >
-                +10초
-              </button>
-              {/* +1분 버튼 */}
-              <button
-                onClick={increaseMinute}
-                className="w-10 h-7 flex items-center justify-center bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded border border-indigo-300 transition-colors text-xs font-medium touch-manipulation active:bg-indigo-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={timerState !== 'idle'}
-              >
-                +1분
-              </button>
-            </div>
-
-            {/* 음원 프리셋 버튼들 */}
-            <div className="flex gap-2">
-              <button
-                onClick={handle30SecPreset}
-                className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1 shadow-md disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation active:bg-indigo-800"
-                disabled={timerState === 'running'}
-              >
-                <Music className="w-3 h-3" />
-                30초
-              </button>
-              <button
-                onClick={handle60SecPreset}
-                className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1 shadow-md disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation active:bg-indigo-800"
-                disabled={timerState === 'running'}
-              >
-                <Music className="w-3 h-3" />
-                60초
-              </button>
-            </div>
+              {/* 음원 프리셋 버튼들 */}
+              <div className="flex gap-2">
+                <button
+                  onClick={handle30SecPreset}
+                  className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1 shadow-md disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation active:bg-indigo-800"
+                  disabled={timerState === 'running' || !audioReady}
+                >
+                  <Music className="w-3 h-3" />
+                  30초
+                </button>
+                <button
+                  onClick={handle60SecPreset}
+                  className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1 shadow-md disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation active:bg-indigo-800"
+                  disabled={timerState === 'running' || !audioReady}
+                >
+                  <Music className="w-3 h-3" />
+                  60초
+                </button>
+              </div>
             </div>
           </div>
         </div>
