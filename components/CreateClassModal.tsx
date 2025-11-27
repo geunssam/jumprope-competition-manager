@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Users, UserPlus } from 'lucide-react';
 import { Button } from './Button';
 import { Student } from '../types';
+import { generateUniqueAccessCode } from '../lib/accessCodeGenerator';
 
 interface CreateClassModalProps {
   grade?: number;
@@ -32,14 +33,24 @@ export const CreateClassModal: React.FC<CreateClassModalProps> = ({
     }
 
     // 쉼표 또는 줄바꿈으로 구분된 학생 이름 파싱
+    // 중복 없는 accessCode 생성을 위해 기존 코드 추적
+    const existingCodes: string[] = [];
+
     const students: Student[] = studentNames
       .split(/[,\n]/)  // 쉼표 또는 줄바꿈으로 분리
       .map(s => s.trim())
       .filter(s => s.length > 0)
-      .map((name, idx) => ({
-        id: `std_${Date.now()}_${idx}`,
-        name
-      }));
+      .map((name, idx) => {
+        // 각 학생마다 고유한 accessCode 생성
+        const accessCode = generateUniqueAccessCode(existingCodes);
+        existingCodes.push(accessCode);
+
+        return {
+          id: `std_${Date.now()}_${idx}`,
+          name,
+          accessCode, // 🆕 학생 식별용 코드 추가
+        };
+      });
 
     if (students.length === 0) {
       alert('최소 1명 이상의 학생을 입력해주세요.');

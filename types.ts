@@ -4,6 +4,7 @@ export interface Student {
   id: string;
   name: string;
   number?: number; // 학생 번호
+  accessCode: string; // 🆕 학생 식별용 4자리 코드 (예: "AB3K")
   // 연습 기록 관련
   personalBests?: Record<string, {
     score: number;
@@ -82,10 +83,45 @@ export enum ViewMode {
   SETTINGS = 'SETTINGS'
 }
 
-// 연습 기록 타입
+// 기록 모드 타입
 export type RecordMode = 'competition' | 'practice';
 
-// 연습 기록 인터페이스
+// 🆕 학생 중심 기록 인터페이스 (records 컬렉션용)
+export interface StudentRecord {
+  id: string;
+  studentId: string;
+  studentName: string;
+  accessCode: string; // 학생 식별용 코드
+  classId: string;
+  className: string;
+  grade: number;
+  eventId: string;
+  eventName: string;
+  score: number;
+  date: string; // YYYY-MM-DD
+  mode: RecordMode;
+  // 단체전 전용
+  teamId?: string;
+  teamMembers?: string[];
+  teamScore?: number;
+  // 메타데이터
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// 🆕 게임 세션 인터페이스 (향후 사용)
+export interface Game {
+  id: string;
+  date: string; // YYYY-MM-DD
+  mode: RecordMode;
+  grade: number;
+  eventIds: string[];
+  status: 'in_progress' | 'completed';
+  competitionId: string;
+  createdAt: Date;
+}
+
+// 연습 기록 인터페이스 (기존 - 호환성 유지)
 export interface PracticeRecord {
   id: string;
   studentId: string;
