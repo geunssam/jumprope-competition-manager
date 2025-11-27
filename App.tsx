@@ -24,7 +24,8 @@ import {
 import {
   migrateLocalStorageToFirestore,
   hasLocalStorageData,
-  hasMigratedData
+  hasMigratedData,
+  cleanupOrphanedEventRecords
 } from './utils/migration';
 import { CompetitionEvent, ClassTeam, GradeConfig, ViewMode, Student } from './types';
 import { INITIAL_EVENTS } from './constants';
@@ -58,9 +59,6 @@ const AppContent: React.FC = () => {
     }
     return false;
   });
-
-  // 🆕 연습/대회 모드 상태 (App 레벨로 끌어올림)
-  const [practiceMode, setPracticeMode] = useState<'practice' | 'competition'>('practice');
 
   // 🆕 학급 관리 모달 상태
   const [isClassManagementOpen, setIsClassManagementOpen] = useState(false);
@@ -105,6 +103,13 @@ const AppContent: React.FC = () => {
       setLoading(false);
       return;
     }
+
+    // 콘솔 마이그레이션 함수용 userId 저장
+    localStorage.setItem('jr_user_id', user.uid);
+    if (typeof window !== 'undefined') {
+      (window as any).__currentUserId = user.uid;
+    }
+    console.log('👤 userId 저장됨:', user.uid);
 
     const initCompetition = async () => {
       try {
@@ -178,6 +183,14 @@ const AppContent: React.FC = () => {
 
     initCompetition();
   }, [user]);
+
+  // 1.5. 콘솔 함수용 competitionId 저장
+  useEffect(() => {
+    if (currentCompetitionId && typeof window !== 'undefined') {
+      (window as any).__currentCompetitionId = currentCompetitionId;
+      console.log('🏆 competitionId 저장됨:', currentCompetitionId);
+    }
+  }, [currentCompetitionId]);
 
   // 2. 종목 실시간 구독
   useEffect(() => {
@@ -273,7 +286,47 @@ const AppContent: React.FC = () => {
     loadConfigs();
   }, [user, currentCompetitionId]);
 
-  // 5. 🆕 학급 관리 모달용 전체 학급 구독
+  // 5. 고아 데이터 정리 마이그레이션 (한 세션에 한 번만 실행)
+  useEffect(() => {
+    const CLEANUP_VERSION = 'v1'; // 버전 변경 시 다시 실행됨
+    const CLEANUP_KEY = `jr_orphan_cleanup_${CLEANUP_VERSION}`;
+
+    if (!user || !currentCompetitionId || loading) return;
+    if (classes.length === 0 || events.length === 0 || gradeConfigs.length === 0) return;
+
+    // 이미 정리 완료된 경우 스킵
+    if (sessionStorage.getItem(CLEANUP_KEY) === 'done') return;
+
+    const runCleanup = async () => {
+      try {
+        // gradeConfigs 배열을 Record로 변환
+        const configsRecord: Record<number, GradeConfig> = {};
+        gradeConfigs.forEach(config => {
+          configsRecord[config.grade] = config;
+        });
+
+        const result = await cleanupOrphanedEventRecords(
+          user.uid,
+          classes,
+          events,
+          configsRecord
+        );
+
+        if (result.cleaned) {
+          console.log(`🧹 고아 데이터 정리 완료: ${result.removedCount}개 기록 삭제`);
+          result.details.forEach(detail => console.log(`  - ${detail}`));
+        }
+
+        sessionStorage.setItem(CLEANUP_KEY, 'done');
+      } catch (error) {
+        console.error('❌ 고아 데이터 정리 실패:', error);
+      }
+    };
+
+    runCleanup();
+  }, [user, currentCompetitionId, loading, classes, events, gradeConfigs]);
+
+  // 6. 🆕 학급 관리 모달용 전체 학급 구독
   useEffect(() => {
     if (!isClassManagementOpen || !user || !currentCompetitionId) {
       return;
@@ -298,6 +351,13 @@ const AppContent: React.FC = () => {
 
   const handleUpdateGradeConfig = async (newConfig: GradeConfig) => {
     if (!user || !currentCompetitionId) return;
+    console.log('🔄 [App.handleUpdateGradeConfig] 호출됨:', {
+      grade: newConfig.grade,
+      hasCustomEventsByDate: !!newConfig.customEventsByDate,
+      customEventsByDateKeys: newConfig.customEventsByDate ? Object.keys(newConfig.customEventsByDate) : [],
+      userId: user.uid,
+      competitionId: currentCompetitionId
+    });
     await updateGradeConfig(user.uid, currentCompetitionId, newConfig);
     setGradeConfigs(prev => prev.map(c => c.grade === newConfig.grade ? newConfig : c));
   };
@@ -342,11 +402,6 @@ const AppContent: React.FC = () => {
   const handleUpdateStudents = async (classId: string, students: Student[]) => {
     if (!user || !currentCompetitionId) return;
     await updateClassStudents(user.uid, classId, students);
-  };
-
-  // 🆕 모드 토글 핸들러
-  const handleModeToggle = () => {
-    setPracticeMode(prev => prev === 'practice' ? 'competition' : 'practice');
   };
 
   // Get config for current grade
@@ -397,8 +452,6 @@ const AppContent: React.FC = () => {
           isSettingsActive={currentView === ViewMode.SETTINGS}
           isCollapsed={isSidebarCollapsed}
           onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-          currentMode={practiceMode}
-          onModeToggle={handleModeToggle}
           onClassManagementClick={() => setIsClassManagementOpen(true)}
         />
 
@@ -420,8 +473,6 @@ const AppContent: React.FC = () => {
               onUpdateClasses={handleUpdateClasses}
               onUpdateConfig={handleUpdateGradeConfig}
               onUpdateEvents={handleUpdateEvents}
-              viewMode={practiceMode}
-              onModeToggle={setPracticeMode}
               onClassManagementClick={() => setIsClassManagementOpen(true)}
             />
           )}

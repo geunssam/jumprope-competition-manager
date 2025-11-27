@@ -12,9 +12,6 @@ interface SidebarProps {
   isSettingsActive: boolean;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
-  // 🆕 모드 토글 관련 props
-  currentMode: 'practice' | 'competition';
-  onModeToggle: () => void;
   onClassManagementClick: () => void;
 }
 
@@ -25,8 +22,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isSettingsActive,
   isCollapsed,
   onToggleCollapse,
-  currentMode,
-  onModeToggle,
   onClassManagementClick,
 }) => {
   const grades = [1, 2, 3, 4, 5, 6];
@@ -154,30 +149,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <ChevronLeft className="w-4 h-4" />
             )}
           </button>
-        </div>
-      </div>
-
-      {/* 🆕 연습/대회 모드 슬라이드 토글 */}
-      <div
-        onClick={onModeToggle}
-        className={`${isCollapsed ? 'mx-1.5' : 'mx-2 md:mx-3'} my-2 bg-slate-200 rounded-full p-1 cursor-pointer relative select-none`}
-      >
-        {/* 슬라이딩 배경 */}
-        <div
-          className={`absolute top-1 bottom-1 w-[calc(50%-4px)] bg-white rounded-full shadow-sm transition-all duration-200 ease-out
-            ${currentMode === 'competition' ? 'left-[calc(50%+2px)]' : 'left-1'}`}
-        />
-
-        {/* 라벨 */}
-        <div className="relative flex">
-          <span className={`flex-1 text-center py-1.5 text-xs md:text-sm z-10 transition-colors duration-200 whitespace-nowrap
-            ${currentMode === 'practice' ? 'text-green-600 font-semibold' : 'text-slate-400'}`}>
-            {isCollapsed ? '📝' : '📝 연습'}
-          </span>
-          <span className={`flex-1 text-center py-1.5 text-xs md:text-sm z-10 transition-colors duration-200 whitespace-nowrap
-            ${currentMode === 'competition' ? 'text-indigo-600 font-semibold' : 'text-slate-400'}`}>
-            {isCollapsed ? '🏆' : '🏆 대회'}
-          </span>
         </div>
       </div>
 

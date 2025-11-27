@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { ClassTeam, CompetitionEvent, GradeConfig, Student, Team } from '../types';
 import { Button } from './Button';
-import { Plus, Trash, CheckSquare, Square, Users, Trophy, ClipboardList, Settings2, Medal, UserPlus, ChevronDown, ChevronUp, Check, AlertCircle, X, Copy } from 'lucide-react';
+import { Plus, Trash, CheckSquare, Square, Users, Trophy, ClipboardList, Settings2, Medal, UserPlus, ChevronDown, ChevronUp, Check, AlertCircle, X, Copy, History } from 'lucide-react';
 import { MatrixRecordTable } from './MatrixRecordTable';
 import { CompetitionTimer } from './CompetitionTimer';
 import { CreateClassModal } from './CreateClassModal';
@@ -25,7 +25,6 @@ import {
   horizontalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { SortableEventCard } from './SortableEventCard';
-import { PracticeModeView } from './PracticeModeView';
 import { RecordHistoryView } from './RecordHistoryView';
 
 interface GradeViewProps {
@@ -38,14 +37,10 @@ interface GradeViewProps {
   onUpdateEvents: (events: CompetitionEvent[]) => void;
   competitionId: string;
   userId: string;
-  // 🆕 App.tsx에서 관리하는 viewMode 및 콜백
-  viewMode: 'practice' | 'competition';
-  onModeToggle: (mode: 'practice' | 'competition') => void;
   onClassManagementClick: () => void;
 }
 
-type TabType = 'SETTINGS' | 'RECORDS' | 'RESULTS';
-type ViewModeType = 'competition' | 'practice';
+type TabType = 'SETTINGS' | 'RECORDS' | 'HISTORY' | 'RESULTS' | 'GROWTH';
 type EventSubTab = 'INDIVIDUAL' | 'PAIR' | 'TEAM';
 
 export const GradeView: React.FC<GradeViewProps> = ({
@@ -58,8 +53,6 @@ export const GradeView: React.FC<GradeViewProps> = ({
   onUpdateEvents,
   competitionId,
   userId,
-  viewMode, // 🆕 App.tsx에서 전달받음
-  onModeToggle,
   onClassManagementClick,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('SETTINGS');
@@ -73,7 +66,6 @@ export const GradeView: React.FC<GradeViewProps> = ({
 
   // For Records Tab
   const [selectedRecordEventId, setSelectedRecordEventId] = useState<string | null>(null);
-  const [recordsSubTab, setRecordsSubTab] = useState<'input' | 'history'>('input');
 
   // For Multi-Class Participant/Team Management
   const [multiClassParticipantModalEvent, setMultiClassParticipantModalEvent] = useState<CompetitionEvent | null>(null);
@@ -217,6 +209,13 @@ export const GradeView: React.FC<GradeViewProps> = ({
   };
 
   const handleCopyEvent = (originalEvent: CompetitionEvent) => {
+    console.log('📋📋 [handleCopyEvent] 종목 복사 시작!! v2:', {
+      originalEventId: originalEvent.id,
+      originalEventName: originalEvent.name,
+      selectedDate,
+      currentCustomEvents: gradeConfig.customEventsByDate?.[selectedDate]?.length || 0
+    });
+
     // 1. 패턴 추출: "긴줄넘기 2" → "긴줄넘기"
     const namePattern = originalEvent.name.replace(/\s*\d+$/, '').trim();
 
@@ -259,7 +258,7 @@ export const GradeView: React.FC<GradeViewProps> = ({
       gradeConfig.events[originalEvent.id] ||
       { selected: false, targetParticipants: 0 };
 
-    onUpdateConfig({
+    const newGradeConfig = {
       ...gradeConfig,
       dateEvents: {
         ...gradeConfig.dateEvents,
@@ -275,7 +274,17 @@ export const GradeView: React.FC<GradeViewProps> = ({
         ...gradeConfig.customEventsByDate,
         [selectedDate]: [...currentDateCustomEvents, newEvent]
       }
+    };
+
+    console.log('📋 [handleCopyEvent] onUpdateConfig 호출:', {
+      newEventId: newEvent.id,
+      newEventName: newEvent.name,
+      hasCustomEventsByDate: !!newGradeConfig.customEventsByDate,
+      customEventsByDateKeys: Object.keys(newGradeConfig.customEventsByDate || {}),
+      customEventsForDate: newGradeConfig.customEventsByDate?.[selectedDate]?.map(e => e.name)
     });
+
+    onUpdateConfig(newGradeConfig);
 
     // 8. 모든 학급의 참가 데이터 복사 (점수는 0으로 리셋, 날짜 포함)
     const updatedClasses = classes.map(c => {
@@ -331,8 +340,60 @@ export const GradeView: React.FC<GradeViewProps> = ({
       gradeConfig.customEventsByDate?.[selectedDate]?.find(e => e.id === eventId);
 
     const isSelecting = !currentConfig.selected;
+    // 복사된 종목인지 확인 (customEventsByDate에 있는지)
+    const isCustomEvent = gradeConfig.customEventsByDate?.[selectedDate]?.some(e => e.id === eventId) || false;
 
-    // 날짜별 config 업데이트
+    // If deselecting a custom event, remove it completely
+    if (!isSelecting && isCustomEvent) {
+      console.log('🗑️ 복사된 종목 삭제:', eventId);
+
+      // 1. customEventsByDate에서 해당 종목 제거
+      const currentCustomEvents = gradeConfig.customEventsByDate?.[selectedDate] || [];
+      const updatedCustomEvents = currentCustomEvents.filter(e => e.id !== eventId);
+
+      // 2. dateEvents에서 해당 종목 설정 제거
+      const { [eventId]: removed, ...restDateEvents } = currentDateEvents;
+
+      // 3. gradeConfig 업데이트
+      onUpdateConfig({
+        ...gradeConfig,
+        dateEvents: {
+          ...gradeConfig.dateEvents,
+          [selectedDate]: restDateEvents
+        },
+        customEventsByDate: {
+          ...gradeConfig.customEventsByDate,
+          [selectedDate]: updatedCustomEvents
+        }
+      });
+
+      // 4. 모든 학급에서 해당 종목의 기록 제거 및 Firestore 저장
+      const updatedClasses = classes.map(c => {
+        if (c.grade !== grade) return c;
+        const { [eventId]: removedResult, ...restResults } = c.results || {};
+        return {
+          ...c,
+          results: restResults
+        };
+      });
+
+      // 5. Firestore에 학급 데이터 저장 (삭제된 종목 기록 반영)
+      (async () => {
+        try {
+          const { saveCompetitionResults } = await import('../services/firestore');
+          await saveCompetitionResults(userId, updatedClasses.filter(c => c.grade === grade));
+          console.log('✅ 삭제된 종목 기록 Firestore 저장 완료');
+        } catch (error) {
+          console.error('❌ 삭제된 종목 기록 저장 실패:', error);
+        }
+      })();
+
+      onUpdateClasses(updatedClasses);
+
+      return;
+    }
+
+    // 날짜별 config 업데이트 (전역 종목 선택/해제)
     onUpdateConfig({
       ...gradeConfig,
       dateEvents: {
@@ -585,8 +646,10 @@ export const GradeView: React.FC<GradeViewProps> = ({
   const renderTabs = () => {
     const tabs: { id: TabType; label: string; icon: React.ElementType }[] = [
       { id: 'SETTINGS', label: '경기 설정', icon: Settings2 },
-      { id: 'RECORDS', label: '경기 기록 입력', icon: ClipboardList },
-      { id: 'RESULTS', label: '경기 결과 종합', icon: Trophy },
+      { id: 'RECORDS', label: '기록 입력', icon: ClipboardList },
+      { id: 'RESULTS', label: '결과 종합', icon: Trophy },
+      { id: 'HISTORY', label: '기록 조회', icon: History },
+      { id: 'GROWTH', label: '성장 추적', icon: Medal },
     ];
 
     return (
@@ -904,20 +967,18 @@ export const GradeView: React.FC<GradeViewProps> = ({
         <div className="flex-1 flex flex-col items-center justify-center p-12">
           <Users className="w-12 h-12 text-slate-300 mb-4" />
           <p className="text-slate-500 font-medium">등록된 학급이 없습니다.</p>
-          <button onClick={() => setActiveTab('MANAGEMENT')} className="text-indigo-600 font-semibold mt-2 hover:underline">
-            학급 관리 탭으로 이동
-          </button>
+          <p className="text-sm text-slate-400 mt-2">사이드바에서 학급 관리를 클릭해 학급을 등록하세요.</p>
         </div>
       );
     }
 
-    if (activeEvents.length === 0 && recordsSubTab === 'input') {
+    if (activeEvents.length === 0) {
       return (
         <div className="flex-1 flex flex-col items-center justify-center p-12">
           <Settings2 className="w-12 h-12 text-slate-300 mb-4" />
           <p className="text-slate-500 font-medium">선택된 종목이 없습니다.</p>
           <button onClick={() => setActiveTab('SETTINGS')} className="text-indigo-600 font-semibold mt-2 hover:underline">
-            종목 선정 탭으로 이동
+            경기 설정 탭으로 이동
           </button>
         </div>
       );
@@ -925,76 +986,53 @@ export const GradeView: React.FC<GradeViewProps> = ({
 
     return (
       <div className="flex flex-col h-full">
-        {/* Sub Tab Navigation */}
-        <div className="flex border-b border-slate-200 bg-white px-6">
-          <button
-            onClick={() => setRecordsSubTab('input')}
-            className={`flex items-center gap-2 px-6 py-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${
-              recordsSubTab === 'input'
-                ? 'border-indigo-600 text-indigo-700'
-                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-            }`}
-          >
-            <Trophy className="w-4 h-4" />
-            점수 입력
-          </button>
-          <button
-            onClick={() => setRecordsSubTab('history')}
-            className={`flex items-center gap-2 px-6 py-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${
-              recordsSubTab === 'history'
-                ? 'border-indigo-600 text-indigo-700'
-                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-            }`}
-          >
-            <ClipboardList className="w-4 h-4" />
-            기록 조회
-          </button>
+        {/* Timer Area - Fixed at top */}
+        <div className="flex-shrink-0 p-6 bg-slate-50 border-b border-slate-200">
+          <CompetitionTimer showDatePicker={false} />
         </div>
 
-        {/* Content */}
-        {recordsSubTab === 'input' ? (
-          <>
-            {/* Timer Area - Fixed at top */}
-            <div className="flex-shrink-0 p-6 bg-slate-50 border-b border-slate-200">
-              <CompetitionTimer showDatePicker={false} />
-            </div>
-
-            {/* Scoreboard + Matrix Area - Independent scroll */}
-            <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
-              <div className="max-w-full mx-auto">
-                <MatrixRecordTable
-                  classes={gradeClasses}
-                  activeEvents={activeEvents}
-                  onUpdateClasses={onUpdateClasses}
-                  selectedDate={selectedDate}
-                  competitionId={competitionId}
-                  grade={grade}
-                  onEditParticipants={(eventId, classId) => {
-                    const event = events.find(e => e.id === eventId);
-                    if (event && event.type === 'INDIVIDUAL') {
-                      setMultiClassParticipantModalEvent(event);
-                    } else if (event && (event.type === 'PAIR' || event.type === 'TEAM')) {
-                      setMultiClassTeamModalEvent(event);
-                    }
-                  }}
-                />
-              </div>
-            </div>
-          </>
-        ) : (
-          <div className="flex-1 overflow-auto">
-            <RecordHistoryView
-              competitionId={competitionId}
-              grade={grade}
-              events={events}
+        {/* Scoreboard + Matrix Area - Independent scroll */}
+        <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
+          <div className="max-w-full mx-auto">
+            <MatrixRecordTable
               classes={gradeClasses}
-              mode="competition"
+              activeEvents={activeEvents}
+              onUpdateClasses={onUpdateClasses}
+              selectedDate={selectedDate}
+              competitionId={competitionId}
+              userId={userId}
+              grade={grade}
+              onEditParticipants={(eventId, classId) => {
+                console.log('🔧 [onEditParticipants] 호출됨:', { eventId, classId });
+                const event = activeEvents.find(e => e.id === eventId) || events.find(e => e.id === eventId);
+                console.log('🔧 [onEditParticipants] 찾은 event:', event);
+                if (event && event.type === 'INDIVIDUAL') {
+                  setMultiClassParticipantModalEvent(event);
+                } else if (event && (event.type === 'PAIR' || event.type === 'TEAM')) {
+                  setMultiClassTeamModalEvent(event);
+                }
+              }}
             />
           </div>
-        )}
+        </div>
       </div>
     );
   };
+
+  // 기록 조회 탭
+  const renderHistoryTab = () => (
+    <div className="flex-1 overflow-auto">
+      <RecordHistoryView
+        competitionId={competitionId}
+        userId={userId}
+        grade={grade}
+        events={events}
+        classes={gradeClasses}
+        mode="competition"
+        gradeConfig={gradeConfig}
+      />
+    </div>
+  );
 
   const renderResultsTab = () => {
     const sortedClasses = [...gradeClasses].sort((a, b) => calculateTotalScore(b) - calculateTotalScore(a));
@@ -1179,27 +1217,30 @@ export const GradeView: React.FC<GradeViewProps> = ({
     );
   };
 
+  // 성장 추적 탭 렌더 (임시 플레이스홀더)
+  const renderGrowthTab = () => (
+    <div className="max-w-4xl mx-auto p-8 animate-in fade-in duration-300">
+      <div className="text-center py-16">
+        <Medal className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+        <h3 className="text-xl font-bold text-slate-700 mb-2">성장 추적</h3>
+        <p className="text-slate-500">학생별 성장 기록을 추적하고 공유하는 기능입니다.</p>
+        <p className="text-sm text-slate-400 mt-2">곧 업데이트 예정입니다.</p>
+      </div>
+    </div>
+  );
+
   return (
     <div className="flex-1 bg-slate-50 h-full overflow-hidden flex flex-col">
-      {/* Tabs with integrated buttons */}
-      {viewMode === 'competition' && renderTabs()}
+      {/* Tabs */}
+      {renderTabs()}
 
       {/* Main Content */}
       <div className="flex-1 overflow-auto bg-slate-50 scroll-smooth">
-        {viewMode === 'competition' ? (
-          <>
-            {activeTab === 'SETTINGS' && renderSettingsTab()}
-            {activeTab === 'RECORDS' && renderRecordsTab()}
-            {activeTab === 'RESULTS' && renderResultsTab()}
-          </>
-        ) : (
-          <PracticeModeView
-            competitionId={competitionId}
-            grade={grade}
-            events={events}
-            classes={gradeClasses}
-          />
-        )}
+        {activeTab === 'SETTINGS' && renderSettingsTab()}
+        {activeTab === 'RECORDS' && renderRecordsTab()}
+        {activeTab === 'HISTORY' && renderHistoryTab()}
+        {activeTab === 'RESULTS' && renderResultsTab()}
+        {activeTab === 'GROWTH' && renderGrowthTab()}
       </div>
 
       {/* Multi-Class Participant Selection Modal (INDIVIDUAL) */}
