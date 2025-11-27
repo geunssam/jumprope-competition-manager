@@ -15,7 +15,7 @@ import {
   Unsubscribe
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { ClassTeam, CompetitionEvent, GradeConfig, PracticeRecord, TeacherSettings, ClassStats } from '../types';
+import { ClassTeam, CompetitionEvent, GradeConfig, PracticeRecord, TeacherSettings, ClassStats, StudentRecord, Student } from '../types';
 
 // === Helper 함수 ===
 const getUserCollection = (userId: string, collectionName: string) => {
@@ -854,4 +854,238 @@ export const getAllClassResultsByDate = async (
       results: dateResults
     };
   });
+};
+
+// ========================================
+// 🆕 Records 컬렉션 CRUD (Phase 2)
+// ========================================
+
+/**
+ * 개별 기록 저장
+ */
+export const createRecord = async (
+  userId: string,
+  record: Omit<StudentRecord, 'id' | 'createdAt' | 'updatedAt'>
+): Promise<string> => {
+  const recordRef = doc(collection(db, 'users', userId, 'records'));
+  const recordData = {
+    ...record,
+    id: recordRef.id,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+  await setDoc(recordRef, recordData);
+  return recordRef.id;
+};
+
+/**
+ * 기록 일괄 저장 (배치)
+ */
+export const createRecordsBatch = async (
+  userId: string,
+  records: Omit<StudentRecord, 'id' | 'createdAt' | 'updatedAt'>[]
+): Promise<void> => {
+  if (records.length === 0) return;
+
+  const batch = writeBatch(db);
+
+  records.forEach((record) => {
+    const recordRef = doc(collection(db, 'users', userId, 'records'));
+    batch.set(recordRef, {
+      ...record,
+      id: recordRef.id,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  });
+
+  await batch.commit();
+};
+
+/**
+ * 학생별 기록 조회
+ */
+export const getStudentRecords = async (
+  userId: string,
+  studentId: string,
+  options?: { mode?: string; eventId?: string; limit?: number }
+): Promise<StudentRecord[]> => {
+  let q = query(
+    getUserCollection(userId, 'records'),
+    where('studentId', '==', studentId),
+    orderBy('date', 'desc')
+  );
+
+  const snapshot = await getDocs(q);
+  let records = snapshot.docs.map((doc) => ({
+    id: doc.id,
+    ...doc.data(),
+    createdAt: doc.data().createdAt?.toDate() || new Date(),
+    updatedAt: doc.data().updatedAt?.toDate() || new Date(),
+  })) as StudentRecord[];
+
+  // 클라이언트 필터링 (복합 쿼리 제약 회피)
+  if (options?.mode) {
+    records = records.filter((r) => r.mode === options.mode);
+  }
+  if (options?.eventId) {
+    records = records.filter((r) => r.eventId === options.eventId);
+  }
+  if (options?.limit) {
+    records = records.slice(0, options.limit);
+  }
+
+  return records;
+};
+
+/**
+ * accessCode로 학생 정보 및 기록 조회 (학생 페이지용)
+ */
+export const getRecordsByAccessCode = async (
+  accessCode: string
+): Promise<{ student: Student & { classId: string; className: string; grade: number; userId: string }; records: StudentRecord[] } | null> => {
+  // 1. accessCodes 컬렉션에서 학생 정보 조회
+  const accessCodeDoc = await getDoc(doc(db, 'accessCodes', accessCode));
+
+  if (!accessCodeDoc.exists()) {
+    console.log('❌ accessCode를 찾을 수 없습니다:', accessCode);
+    return null;
+  }
+
+  const accessCodeData = accessCodeDoc.data();
+  const { studentId, studentName, classId, className, grade, userId } = accessCodeData;
+
+  // 2. 해당 학생의 기록 조회
+  const recordsQuery = query(
+    collection(db, 'users', userId, 'records'),
+    where('accessCode', '==', accessCode),
+    orderBy('date', 'desc')
+  );
+
+  const recordsSnapshot = await getDocs(recordsQuery);
+  const records = recordsSnapshot.docs.map((doc) => ({
+    id: doc.id,
+    ...doc.data(),
+    createdAt: doc.data().createdAt?.toDate() || new Date(),
+    updatedAt: doc.data().updatedAt?.toDate() || new Date(),
+  })) as StudentRecord[];
+
+  return {
+    student: {
+      id: studentId,
+      name: studentName,
+      accessCode,
+      classId,
+      className,
+      grade,
+      userId,
+    },
+    records,
+  };
+};
+
+/**
+ * 종목별 기록 조회
+ */
+export const getEventRecords = async (
+  userId: string,
+  eventId: string,
+  options?: { date?: string; classId?: string }
+): Promise<StudentRecord[]> => {
+  const q = query(
+    getUserCollection(userId, 'records'),
+    where('eventId', '==', eventId),
+    orderBy('date', 'desc')
+  );
+
+  const snapshot = await getDocs(q);
+  let records = snapshot.docs.map((doc) => ({
+    id: doc.id,
+    ...doc.data(),
+    createdAt: doc.data().createdAt?.toDate() || new Date(),
+    updatedAt: doc.data().updatedAt?.toDate() || new Date(),
+  })) as StudentRecord[];
+
+  // 클라이언트 필터링
+  if (options?.date) {
+    records = records.filter((r) => r.date === options.date);
+  }
+  if (options?.classId) {
+    records = records.filter((r) => r.classId === options.classId);
+  }
+
+  return records;
+};
+
+// ========================================
+// 🆕 AccessCodes 컬렉션 관리 (Phase 2)
+// ========================================
+
+interface AccessCodeMapping {
+  studentId: string;
+  studentName: string;
+  classId: string;
+  className: string;
+  grade: number;
+  userId: string;
+}
+
+/**
+ * accessCode → 학생 정보 매핑 생성
+ */
+export const createAccessCodeMapping = async (
+  code: string,
+  data: AccessCodeMapping
+): Promise<void> => {
+  await setDoc(doc(db, 'accessCodes', code), {
+    ...data,
+    createdAt: serverTimestamp(),
+  });
+};
+
+/**
+ * accessCode로 학생 정보 조회
+ */
+export const getStudentByAccessCode = async (
+  code: string
+): Promise<AccessCodeMapping | null> => {
+  const docSnap = await getDoc(doc(db, 'accessCodes', code));
+  return docSnap.exists() ? (docSnap.data() as AccessCodeMapping) : null;
+};
+
+/**
+ * accessCode 매핑 삭제
+ */
+export const deleteAccessCodeMapping = async (code: string): Promise<void> => {
+  await deleteDoc(doc(db, 'accessCodes', code));
+};
+
+/**
+ * 특정 학급의 모든 학생 accessCode 매핑 일괄 생성
+ */
+export const createAccessCodeMappingsBatch = async (
+  userId: string,
+  classId: string,
+  className: string,
+  grade: number,
+  students: Student[]
+): Promise<void> => {
+  const batch = writeBatch(db);
+
+  students.forEach((student) => {
+    if (student.accessCode) {
+      const codeRef = doc(db, 'accessCodes', student.accessCode);
+      batch.set(codeRef, {
+        studentId: student.id,
+        studentName: student.name,
+        classId,
+        className,
+        grade,
+        userId,
+        createdAt: serverTimestamp(),
+      });
+    }
+  });
+
+  await batch.commit();
 };

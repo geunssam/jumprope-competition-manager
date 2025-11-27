@@ -56,3 +56,64 @@ export const hasLocalStorageData = (): boolean => {
   const classes = localStorage.getItem('jr_classes');
   return !!(events && classes);
 };
+
+/**
+ * 고아 데이터(orphaned records) 정리 함수
+ * 삭제된 종목이나 학급에 대한 기록을 정리합니다.
+ */
+export const cleanupOrphanedEventRecords = async (
+  userId: string,
+  classes: ClassTeam[],
+  events: CompetitionEvent[],
+  gradeConfigs: Record<number, GradeConfig>
+): Promise<{ cleaned: boolean; removedCount: number; details: string[] }> => {
+  const details: string[] = [];
+  let removedCount = 0;
+
+  try {
+    // 현재 존재하는 종목 ID 목록
+    const validEventIds = new Set(events.map(e => e.id));
+
+    // 각 학급의 results에서 고아 기록 찾기
+    for (const cls of classes) {
+      if (!cls.results) continue;
+
+      const orphanedEventIds: string[] = [];
+
+      for (const eventId of Object.keys(cls.results)) {
+        if (!validEventIds.has(eventId)) {
+          orphanedEventIds.push(eventId);
+        }
+      }
+
+      if (orphanedEventIds.length > 0) {
+        // 고아 기록 제거
+        const updatedResults = { ...cls.results };
+        orphanedEventIds.forEach(eventId => {
+          delete updatedResults[eventId];
+          removedCount++;
+          details.push(`${cls.name}: 종목 ${eventId} 기록 삭제`);
+        });
+
+        // Firestore 업데이트 (배치로 처리)
+        const classRef = doc(db, 'users', userId, 'classes', cls.id);
+        const batch = writeBatch(db);
+        batch.update(classRef, { results: updatedResults });
+        await batch.commit();
+      }
+    }
+
+    return {
+      cleaned: removedCount > 0,
+      removedCount,
+      details,
+    };
+  } catch (error) {
+    console.error('❌ cleanupOrphanedEventRecords 실패:', error);
+    return {
+      cleaned: false,
+      removedCount: 0,
+      details: [`오류 발생: ${error}`],
+    };
+  }
+};

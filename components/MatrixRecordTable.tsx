@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { ClassTeam, CompetitionEvent } from '../types';
+import { ClassTeam, CompetitionEvent, StudentRecord, RecordMode } from '../types';
 import { ChevronDown, ChevronRight, Edit3, Save, Users, X } from 'lucide-react';
-import { saveCompetitionResults } from '../services/firestore';
+import { saveCompetitionResults, createRecordsBatch } from '../services/firestore';
+import { useAuth } from '../contexts/AuthContext';
 
 interface MatrixRecordTableProps {
   classes: ClassTeam[];
@@ -11,6 +12,7 @@ interface MatrixRecordTableProps {
   selectedDate: string; // 사용자가 선택한 경기 날짜
   competitionId: string; // Firestore에서 최신 데이터 가져오기 위해 필요
   grade: number; // Firestore에서 최신 데이터 가져오기 위해 필요
+  mode?: RecordMode; // 🆕 기록 모드 (대회/연습)
 }
 
 export const MatrixRecordTable: React.FC<MatrixRecordTableProps> = ({
@@ -21,7 +23,9 @@ export const MatrixRecordTable: React.FC<MatrixRecordTableProps> = ({
   selectedDate,
   competitionId,
   grade,
+  mode = 'competition', // 기본값: 대회
 }) => {
+  const { user } = useAuth();
   // 종목별 접기/펼치기 상태 (기본값: 모두 접힌 상태)
   const [collapsedEvents, setCollapsedEvents] = useState<Set<string>>(
     new Set(activeEvents.map(e => e.id))
@@ -60,10 +64,77 @@ export const MatrixRecordTable: React.FC<MatrixRecordTableProps> = ({
     return !collapsedEvents.has(eventId);
   };
 
+  // 🆕 records 컬렉션용 데이터 생성 함수
+  const buildStudentRecords = (): Omit<StudentRecord, 'id' | 'createdAt' | 'updatedAt'>[] => {
+    const records: Omit<StudentRecord, 'id' | 'createdAt' | 'updatedAt'>[] = [];
+
+    classes.forEach((cls) => {
+      activeEvents.forEach((evt) => {
+        const result = cls.results[evt.id];
+        if (!result) return;
+
+        // 개인전: 각 학생별 기록 저장
+        if (evt.type === 'INDIVIDUAL' && result.studentScores) {
+          Object.entries(result.studentScores).forEach(([studentId, score]) => {
+            const student = cls.students.find((s) => s.id === studentId);
+            if (!student || !score) return;
+
+            records.push({
+              studentId: student.id,
+              studentName: student.name,
+              accessCode: student.accessCode || '',
+              classId: cls.id,
+              className: cls.name,
+              grade,
+              eventId: evt.id,
+              eventName: evt.name,
+              score,
+              date: selectedDate,
+              mode,
+            });
+          });
+        }
+
+        // 단체전/짝: 각 팀별로 팀원들의 기록 저장
+        if ((evt.type === 'TEAM' || evt.type === 'PAIR') && result.teams) {
+          result.teams.forEach((team) => {
+            team.memberIds?.forEach((memberId) => {
+              const student = cls.students.find((s) => s.id === memberId);
+              if (!student) return;
+
+              records.push({
+                studentId: student.id,
+                studentName: student.name,
+                accessCode: student.accessCode || '',
+                classId: cls.id,
+                className: cls.name,
+                grade,
+                eventId: evt.id,
+                eventName: evt.name,
+                score: 0, // 단체전은 개인 점수 0
+                date: selectedDate,
+                mode,
+                teamId: team.id,
+                teamMembers: team.memberIds?.map((id) => {
+                  const s = cls.students.find((st) => st.id === id);
+                  return s?.name || '';
+                }).filter(Boolean),
+                teamScore: team.score,
+              });
+            });
+          });
+        }
+      });
+    });
+
+    return records;
+  };
+
   // 저장 핸들러
   const handleSave = async () => {
     console.log('\n=== 경기 기록 저장 시작 ===');
     console.log('📅 선택된 날짜:', selectedDate);
+    console.log('🎯 모드:', mode);
     console.log('📦 저장할 학급 데이터:', classes.map(c => ({
       id: c.id,
       name: c.name,
@@ -74,17 +145,28 @@ export const MatrixRecordTable: React.FC<MatrixRecordTableProps> = ({
     setSaving(true);
     setSaveMessage(null);
     try {
-      // 1. Firestore에 저장
+      // 1. 기존 classes.results 저장 (호환성 유지)
       await saveCompetitionResults(classes);
-      console.log('✅ saveCompetitionResults 완료');
+      console.log('✅ saveCompetitionResults 완료 (기존 방식)');
 
-      // 2. Firestore에서 최신 데이터 다시 가져오기
+      // 2. 🆕 records 컬렉션에도 저장 (이중 저장)
+      if (user?.uid) {
+        const studentRecords = buildStudentRecords();
+        if (studentRecords.length > 0) {
+          await createRecordsBatch(user.uid, studentRecords);
+          console.log(`✅ createRecordsBatch 완료 (${studentRecords.length}개 레코드)`);
+        }
+      } else {
+        console.warn('⚠️ 사용자 인증 정보가 없어 records 컬렉션 저장 생략');
+      }
+
+      // 3. Firestore에서 최신 데이터 다시 가져오기
       console.log('🔄 Firestore에서 최신 데이터 가져오는 중...');
       const { getGradeClasses } = await import('../services/firestore');
       const updatedClasses = await getGradeClasses(competitionId, grade);
       console.log('✅ 최신 데이터 가져오기 완료:', updatedClasses.length, '개 학급');
 
-      // 3. 부모 컴포넌트의 상태를 Firestore의 최신 데이터로 업데이트
+      // 4. 부모 컴포넌트의 상태를 Firestore의 최신 데이터로 업데이트
       console.log('🔄 부모 컴포넌트 상태 업데이트 중...');
       onUpdateClasses(updatedClasses);
       console.log('✅ 부모 컴포넌트 상태 업데이트 완료');
