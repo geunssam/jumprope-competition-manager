@@ -163,7 +163,7 @@ export const MatrixRecordTable: React.FC<MatrixRecordTableProps> = ({
       // 3. Firestore에서 최신 데이터 다시 가져오기
       console.log('🔄 Firestore에서 최신 데이터 가져오는 중...');
       const { getGradeClasses } = await import('../services/firestore');
-      const updatedClasses = await getGradeClasses(competitionId, grade);
+      const updatedClasses = await getGradeClasses(user!.uid, competitionId, grade);
       console.log('✅ 최신 데이터 가져오기 완료:', updatedClasses.length, '개 학급');
 
       // 4. 부모 컴포넌트의 상태를 Firestore의 최신 데이터로 업데이트
