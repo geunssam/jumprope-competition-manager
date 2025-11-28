@@ -920,10 +920,10 @@ export const getStudentRecords = async (
   studentId: string,
   options?: { mode?: string; eventId?: string; limit?: number }
 ): Promise<StudentRecord[]> => {
-  let q = query(
+  // 인덱스 없이 작동하도록 orderBy 제거, 클라이언트에서 정렬
+  const q = query(
     getUserCollection(userId, 'records'),
-    where('studentId', '==', studentId),
-    orderBy('date', 'desc')
+    where('studentId', '==', studentId)
   );
 
   const snapshot = await getDocs(q);
@@ -933,6 +933,13 @@ export const getStudentRecords = async (
     createdAt: doc.data().createdAt?.toDate() || new Date(),
     updatedAt: doc.data().updatedAt?.toDate() || new Date(),
   })) as StudentRecord[];
+
+  // 클라이언트에서 날짜 내림차순 정렬
+  records.sort((a, b) => {
+    const dateA = new Date(a.date).getTime();
+    const dateB = new Date(b.date).getTime();
+    return dateB - dateA;
+  });
 
   // 클라이언트 필터링 (복합 쿼리 제약 회피)
   if (options?.mode) {
@@ -953,7 +960,7 @@ export const getStudentRecords = async (
  */
 export const getRecordsByAccessCode = async (
   accessCode: string
-): Promise<{ student: Student & { classId: string; className: string; grade: number; userId: string }; records: StudentRecord[] } | null> => {
+): Promise<{ studentName: string; className: string; grade: number; records: StudentRecord[] } | null> => {
   // 1. accessCodes 컬렉션에서 학생 정보 조회
   const accessCodeDoc = await getDoc(doc(db, 'accessCodes', accessCode));
 
@@ -963,33 +970,29 @@ export const getRecordsByAccessCode = async (
   }
 
   const accessCodeData = accessCodeDoc.data();
-  const { studentId, studentName, classId, className, grade, userId } = accessCodeData;
+  const { studentName, className, grade, userId } = accessCodeData;
 
-  // 2. 해당 학생의 기록 조회
+  // 2. 해당 학생의 기록 조회 (인덱스 없이 - 클라이언트 정렬)
   const recordsQuery = query(
     collection(db, 'users', userId, 'records'),
-    where('accessCode', '==', accessCode),
-    orderBy('date', 'desc')
+    where('accessCode', '==', accessCode)
   );
 
   const recordsSnapshot = await getDocs(recordsQuery);
-  const records = recordsSnapshot.docs.map((doc) => ({
+  let records = recordsSnapshot.docs.map((doc) => ({
     id: doc.id,
     ...doc.data(),
     createdAt: doc.data().createdAt?.toDate() || new Date(),
     updatedAt: doc.data().updatedAt?.toDate() || new Date(),
   })) as StudentRecord[];
 
+  // 클라이언트에서 날짜 내림차순 정렬
+  records.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
   return {
-    student: {
-      id: studentId,
-      name: studentName,
-      accessCode,
-      classId,
-      className,
-      grade,
-      userId,
-    },
+    studentName,
+    className,
+    grade: grade || 0,
     records,
   };
 };
@@ -1098,4 +1101,156 @@ export const createAccessCodeMappingsBatch = async (
   });
 
   await batch.commit();
+};
+
+// ========================================
+// 🆕 데이터 마이그레이션 (classes.results → records)
+// ========================================
+
+/**
+ * classes.results 데이터를 records 컬렉션으로 마이그레이션
+ * - studentScores (개인전) 데이터를 개별 StudentRecord로 변환
+ */
+export const migrateClassResultsToRecords = async (
+  userId: string,
+  classes: ClassTeam[],
+  events: CompetitionEvent[]
+): Promise<{ migrated: number; skipped: number }> => {
+  let migrated = 0;
+  let skipped = 0;
+
+  const eventMap = new Map(events.map(e => [e.id, e]));
+  const batch = writeBatch(db);
+
+  // 이미 존재하는 기록 확인 (중복 방지)
+  const existingRecordsSnap = await getDocs(getUserCollection(userId, 'records'));
+  const existingKeys = new Set<string>();
+  existingRecordsSnap.docs.forEach(doc => {
+    const data = doc.data();
+    // studentId + eventId + date + score 조합으로 중복 체크
+    existingKeys.add(`${data.studentId}_${data.eventId}_${data.date}_${data.score}`);
+  });
+
+  for (const cls of classes) {
+    if (!cls.results) continue;
+
+    for (const [eventId, result] of Object.entries(cls.results)) {
+      const event = eventMap.get(eventId);
+      if (!event) continue;
+
+      const recordDate = result.date || new Date().toISOString().split('T')[0];
+
+      // 1. 개인전 마이그레이션 (studentScores가 있는 경우)
+      if (result.studentScores) {
+        for (const [studentId, score] of Object.entries(result.studentScores)) {
+          if (typeof score !== 'number' || score <= 0) {
+            skipped++;
+            continue;
+          }
+
+          const student = cls.students.find(s => s.id === studentId);
+          if (!student) {
+            skipped++;
+            continue;
+          }
+
+          // 중복 체크
+          const key = `${studentId}_${eventId}_${recordDate}_${score}`;
+          if (existingKeys.has(key)) {
+            skipped++;
+            continue;
+          }
+
+          const recordRef = doc(collection(db, 'users', userId, 'records'));
+          const recordData: Omit<StudentRecord, 'createdAt' | 'updatedAt'> = {
+            id: recordRef.id,
+            studentId,
+            studentName: student.name,
+            accessCode: student.accessCode || '',
+            classId: cls.id,
+            className: cls.name,
+            grade: cls.grade,
+            eventId,
+            eventName: event.name,
+            score,
+            date: recordDate,
+            mode: 'competition',
+          };
+
+          batch.set(recordRef, {
+            ...recordData,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+
+          existingKeys.add(key);
+          migrated++;
+        }
+      }
+
+      // 2. 단체전 마이그레이션 (teams가 있는 경우)
+      if (result.teams && result.teams.length > 0) {
+        for (const team of result.teams) {
+          if (!team.score || team.score <= 0) continue;
+
+          // 팀원 이름 목록
+          const teamMemberNames = team.memberIds
+            .map(id => cls.students.find(s => s.id === id)?.name || '알 수 없음')
+            .filter(Boolean);
+
+          // 각 팀원에게 팀 기록 저장
+          for (const memberId of team.memberIds) {
+            const student = cls.students.find(s => s.id === memberId);
+            if (!student) {
+              skipped++;
+              continue;
+            }
+
+            // 중복 체크
+            const key = `${memberId}_${eventId}_${recordDate}_${team.score}`;
+            if (existingKeys.has(key)) {
+              skipped++;
+              continue;
+            }
+
+            const recordRef = doc(collection(db, 'users', userId, 'records'));
+            const recordData: Omit<StudentRecord, 'createdAt' | 'updatedAt'> = {
+              id: recordRef.id,
+              studentId: memberId,
+              studentName: student.name,
+              accessCode: student.accessCode || '',
+              classId: cls.id,
+              className: cls.name,
+              grade: cls.grade,
+              eventId,
+              eventName: event.name,
+              score: team.score, // 팀 점수를 개인 기록으로
+              date: recordDate,
+              mode: 'competition',
+              // 단체전 전용 필드
+              teamId: team.id,
+              teamMembers: teamMemberNames,
+              teamScore: team.score,
+            };
+
+            batch.set(recordRef, {
+              ...recordData,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            });
+
+            existingKeys.add(key);
+            migrated++;
+          }
+        }
+      }
+    }
+  }
+
+  if (migrated > 0) {
+    await batch.commit();
+  }
+
+  console.log(`📊 마이그레이션 완료: ${migrated}개 저장, ${skipped}개 스킵`);
+  return { migrated, skipped };
 };

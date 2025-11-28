@@ -26,6 +26,7 @@ import {
 } from '@dnd-kit/sortable';
 import { SortableEventCard } from './SortableEventCard';
 import { RecordHistoryView } from './RecordHistoryView';
+import { StudentGrowthTab } from './StudentGrowthTab';
 
 interface GradeViewProps {
   grade: number;
@@ -38,6 +39,7 @@ interface GradeViewProps {
   competitionId: string;
   userId: string;
   onClassManagementClick: () => void;
+  onShowStudentPage?: (accessCode: string) => void;
 }
 
 type TabType = 'SETTINGS' | 'RECORDS' | 'HISTORY' | 'RESULTS' | 'GROWTH';
@@ -54,6 +56,7 @@ export const GradeView: React.FC<GradeViewProps> = ({
   competitionId,
   userId,
   onClassManagementClick,
+  onShowStudentPage,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('SETTINGS');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -1217,16 +1220,25 @@ export const GradeView: React.FC<GradeViewProps> = ({
     );
   };
 
-  // 성장 추적 탭 렌더 (임시 플레이스홀더)
+  // 성장 추적 탭 렌더
   const renderGrowthTab = () => (
-    <div className="max-w-4xl mx-auto p-8 animate-in fade-in duration-300">
-      <div className="text-center py-16">
-        <Medal className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-        <h3 className="text-xl font-bold text-slate-700 mb-2">성장 추적</h3>
-        <p className="text-slate-500">학생별 성장 기록을 추적하고 공유하는 기능입니다.</p>
-        <p className="text-sm text-slate-400 mt-2">곧 업데이트 예정입니다.</p>
-      </div>
-    </div>
+    <StudentGrowthTab
+      classes={gradeClasses}
+      events={events}
+      userId={userId}
+      onShowStudentDetail={(student, classId) => {
+        // 학생 개인 페이지로 이동
+        if (student.accessCode && onShowStudentPage) {
+          onShowStudentPage(student.accessCode);
+        } else {
+          console.log('학생 상세 보기:', student.name, classId, '(accessCode 없음)');
+        }
+      }}
+      onUpdateClasses={(updatedClasses) => {
+        // 학급 데이터 업데이트 (accessCode 자동 생성 등)
+        onUpdateClasses(updatedClasses);
+      }}
+    />
   );
 
   return (

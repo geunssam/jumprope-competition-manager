@@ -6,6 +6,7 @@ import { LoginPage } from './components/LoginPage';
 import PrivacyConsentGuard from './components/PrivacyConsentGuard';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { ClassManagementModal } from './components/ClassManagementModal';
+import { StudentPage } from './pages/StudentPage';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import './utils/runMigration'; // 마이그레이션 함수 로드
 import {
@@ -63,6 +64,9 @@ const AppContent: React.FC = () => {
   // 🆕 학급 관리 모달 상태
   const [isClassManagementOpen, setIsClassManagementOpen] = useState(false);
   const [allClasses, setAllClasses] = useState<ClassTeam[]>([]);
+
+  // 🆕 학생 개인 페이지 상태
+  const [studentPageAccessCode, setStudentPageAccessCode] = useState<string | null>(null);
 
   // 0. 캐시 버전 체크 (앱 시작 시 한 번만)
   useEffect(() => {
@@ -441,6 +445,16 @@ const AppContent: React.FC = () => {
     );
   }
 
+  // 🆕 학생 개인 페이지 표시
+  if (studentPageAccessCode) {
+    return (
+      <StudentPage
+        accessCode={studentPageAccessCode}
+        onBack={() => setStudentPageAccessCode(null)}
+      />
+    );
+  }
+
   return (
     <PrivacyConsentGuard>
       <div className="flex h-screen bg-slate-50 overflow-hidden">
@@ -474,6 +488,7 @@ const AppContent: React.FC = () => {
               onUpdateConfig={handleUpdateGradeConfig}
               onUpdateEvents={handleUpdateEvents}
               onClassManagementClick={() => setIsClassManagementOpen(true)}
+              onShowStudentPage={(accessCode: string) => setStudentPageAccessCode(accessCode)}
             />
           )}
         </main>
