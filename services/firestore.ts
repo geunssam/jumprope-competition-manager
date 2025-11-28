@@ -569,8 +569,10 @@ export const deletePracticeSession = async (
 
 /**
  * 개인 최고 기록 업데이트
+ * @param userId - 사용자 ID (Phase 2.5에서 추가)
  */
 export const updatePersonalBest = async (
+  userId: string,
   classId: string,
   studentId: string,
   eventId: string,
@@ -580,7 +582,8 @@ export const updatePersonalBest = async (
     recordId: string;
   }
 ): Promise<void> => {
-  const classRef = doc(db, 'classes', classId);
+  // Phase 2.5: users/{userId}/classes/{classId} 경로 사용
+  const classRef = getUserDoc(userId, 'classes', classId);
   const classDoc = await getDoc(classRef);
 
   if (!classDoc.exists()) {
@@ -709,8 +712,9 @@ export const getClassStats = async (
 /**
  * 대회 기록 배치 저장
  * 여러 학급의 results를 한 번에 안전하게 저장
+ * @param userId - 사용자 ID (Phase 2.5에서 추가)
  */
-export const saveCompetitionResults = async (classes: ClassTeam[]): Promise<void> => {
+export const saveCompetitionResults = async (userId: string, classes: ClassTeam[]): Promise<void> => {
   console.log('🔍 saveCompetitionResults 시작');
   console.log('📦 저장할 학급 수:', classes.length);
 
@@ -741,8 +745,9 @@ export const saveCompetitionResults = async (classes: ClassTeam[]): Promise<void
 
     console.log(`  ✅ 총점 계산됨: ${totalScore}점`);
 
-    const classRef = doc(db, 'classes', cls.id);
-    console.log(`  📍 문서 경로: /classes/${cls.id}`);
+    // Phase 2.5: users/{userId}/classes/{classId} 경로 사용
+    const classRef = getUserDoc(userId, 'classes', cls.id);
+    console.log(`  📍 문서 경로: /users/${userId}/classes/${cls.id}`);
 
     // update 사용 (문서가 반드시 존재해야 함)
     batch.update(classRef, {
@@ -775,15 +780,17 @@ export const saveCompetitionResults = async (classes: ClassTeam[]): Promise<void
 
 /**
  * 특정 날짜의 모든 학급 대회 기록 삭제
+ * @param userId - 사용자 ID (Phase 2.5에서 추가)
  */
 export const deleteCompetitionDateRecords = async (
+  userId: string,
   competitionId: string,
   grade: number,
   date: string
 ): Promise<void> => {
   console.log('🗑️ 대회 기록 삭제 시작:', { competitionId, grade, date });
 
-  const classes = await getGradeClasses(competitionId, grade);
+  const classes = await getGradeClasses(userId, competitionId, grade);
   console.log(`📦 확인할 학급 수: ${classes.length}개`);
 
   const batch = writeBatch(db);
@@ -810,7 +817,8 @@ export const deleteCompetitionDateRecords = async (
         0
       );
 
-      const classRef = doc(db, 'classes', cls.id);
+      // Phase 2.5: users/{userId}/classes/{classId} 경로 사용
+      const classRef = getUserDoc(userId, 'classes', cls.id);
       batch.update(classRef, {
         results: updatedResults,
         totalScore,
@@ -832,13 +840,15 @@ export const deleteCompetitionDateRecords = async (
 /**
  * 날짜별 전체 학급 경기 기록 조회
  * 특정 날짜의 모든 학급 기록을 필터링하여 반환
+ * @param userId - 사용자 ID (Phase 2.5에서 추가)
  */
 export const getAllClassResultsByDate = async (
+  userId: string,
   competitionId: string,
   grade: number,
   date: string
 ): Promise<Array<{ classId: string; className: string; results: ClassTeam['results'] }>> => {
-  const classes = await getGradeClasses(competitionId, grade);
+  const classes = await getGradeClasses(userId, competitionId, grade);
 
   return classes.map(cls => {
     const dateResults: ClassTeam['results'] = {};

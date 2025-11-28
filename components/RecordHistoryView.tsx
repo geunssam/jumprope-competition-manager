@@ -4,6 +4,7 @@ import { getPracticeRecordsByGrade, deletePracticeSession, deleteCompetitionDate
 import { Calendar, Trophy, TrendingUp, Trash2, Loader } from 'lucide-react';
 import { CompetitionRecordMatrixModal } from './CompetitionRecordMatrixModal';
 import { PracticeSessionModal } from './PracticeSessionModal';
+import { useAuth } from '../contexts/AuthContext';
 
 interface RecordHistoryViewProps {
   competitionId: string;
@@ -22,6 +23,7 @@ export const RecordHistoryView: React.FC<RecordHistoryViewProps> = ({
   classes,
   mode = 'practice'
 }) => {
+  const { user } = useAuth();
   const [records, setRecords] = useState<PracticeRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedMatrixDate, setSelectedMatrixDate] = useState<string | null>(null);
@@ -82,6 +84,11 @@ export const RecordHistoryView: React.FC<RecordHistoryViewProps> = ({
 
   // 대회 모드 날짜별 기록 삭제 핸들러
   const handleDeleteCompetitionDate = async (date: string) => {
+    if (!user?.uid) {
+      alert('사용자 인증 정보가 없습니다.');
+      return;
+    }
+
     if (!confirm(
       `${date} 대회 기록을 삭제하시겠습니까?\n\n` +
       `이 작업은 되돌릴 수 없습니다.`
@@ -92,7 +99,8 @@ export const RecordHistoryView: React.FC<RecordHistoryViewProps> = ({
     setDeleting(date);
 
     try {
-      await deleteCompetitionDateRecords(competitionId, grade, date);
+      // Phase 2.5: userId 파라미터 추가
+      await deleteCompetitionDateRecords(user.uid, competitionId, grade, date);
       console.log(`✅ ${date} 대회 기록 삭제 완료`);
       await loadRecords(); // 목록 새로고침
     } catch (error) {

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { CompetitionEvent, ClassTeam } from '../types';
 import { X, ChevronDown, ChevronRight, Save } from 'lucide-react';
 import { saveCompetitionResults } from '../services/firestore';
+import { useAuth } from '../contexts/AuthContext';
 
 interface CompetitionRecordMatrixModalProps {
   date: string;
@@ -16,6 +17,7 @@ export const CompetitionRecordMatrixModal: React.FC<CompetitionRecordMatrixModal
   events,
   onClose
 }) => {
+  const { user } = useAuth();
   const [expandedClasses, setExpandedClasses] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
@@ -49,10 +51,15 @@ export const CompetitionRecordMatrixModal: React.FC<CompetitionRecordMatrixModal
 
   // 저장 핸들러
   const handleSave = async () => {
+    if (!user?.uid) {
+      setSaveMessage('❌ 사용자 인증 정보가 없습니다.');
+      return;
+    }
     setSaving(true);
     setSaveMessage(null);
     try {
-      await saveCompetitionResults(classes);
+      // Phase 2.5: userId 파라미터 추가
+      await saveCompetitionResults(user.uid, classes);
       setSaveMessage('✅ 저장되었습니다!');
       setTimeout(() => setSaveMessage(null), 3000);
     } catch (error) {

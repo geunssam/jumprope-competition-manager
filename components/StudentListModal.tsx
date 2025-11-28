@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Edit2, Trash2, UserPlus, Check, BarChart3 } from 'lucide-react';
 import { ClassTeam, Student } from '../types';
 import { Button } from './Button';
+import { generateUniqueAccessCode } from '../lib/accessCodeGenerator';
 
 interface StudentListModalProps {
   classData: ClassTeam;
@@ -21,6 +22,35 @@ export const StudentListModal: React.FC<StudentListModalProps> = ({
   const [editingName, setEditingName] = useState('');
   const [newStudentName, setNewStudentName] = useState('');
   const [isAddingStudent, setIsAddingStudent] = useState(false);
+
+  // Phase 2.5: 기존 학생 중 accessCode가 없는 경우 자동 생성
+  useEffect(() => {
+    const studentsWithoutCode = students.filter(s => !s.accessCode);
+
+    if (studentsWithoutCode.length > 0) {
+      console.log(`🔑 accessCode 없는 학생 ${studentsWithoutCode.length}명 발견, 자동 생성 시작...`);
+
+      // 기존 accessCode 수집
+      const existingCodes = students
+        .filter(s => s.accessCode)
+        .map(s => s.accessCode);
+
+      // accessCode 생성 및 학생 정보 업데이트
+      const updatedStudents = students.map(student => {
+        if (!student.accessCode) {
+          const newCode = generateUniqueAccessCode(existingCodes);
+          existingCodes.push(newCode); // 중복 방지
+          console.log(`  ✅ ${student.name}: ${newCode}`);
+          return { ...student, accessCode: newCode };
+        }
+        return student;
+      });
+
+      setStudents(updatedStudents);
+      onUpdateStudents(classData.id, updatedStudents);
+      console.log(`🔑 ${studentsWithoutCode.length}명의 학생에게 accessCode 생성 완료`);
+    }
+  }, []); // 컴포넌트 마운트 시 1회 실행
 
   const handleStartEdit = (student: Student) => {
     setEditingId(student.id);
@@ -65,9 +95,15 @@ export const StudentListModal: React.FC<StudentListModalProps> = ({
       return;
     }
 
+    // 기존 accessCode 수집 (중복 방지)
+    const existingCodes = students
+      .filter(s => s.accessCode)
+      .map(s => s.accessCode);
+
     const newStudent: Student = {
       id: `std_${Date.now()}`,
-      name: newStudentName.trim()
+      name: newStudentName.trim(),
+      accessCode: generateUniqueAccessCode(existingCodes), // Phase 2.5: accessCode 생성
     };
 
     const updatedStudents = [...students, newStudent];

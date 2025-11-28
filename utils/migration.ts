@@ -15,16 +15,17 @@ export const migrateLocalStorageToFirestore = async (userId: string): Promise<st
   // Firestore 일괄 작업
   const batch = writeBatch(db);
 
+  // Phase 2.5: users/{userId}/ 하위 컬렉션에 저장
   // 종목 저장
   localEvents.forEach(event => {
-    const eventRef = doc(db, 'events', event.id);
+    const eventRef = doc(db, 'users', userId, 'events', event.id);
     batch.set(eventRef, { ...event, competitionId });
   });
 
   // 학급 저장
   localClasses.forEach(cls => {
     const totalScore = Object.values(cls.results).reduce((sum, result) => sum + result.score, 0);
-    const clsRef = doc(db, 'classes', cls.id);
+    const clsRef = doc(db, 'users', userId, 'classes', cls.id);
     batch.set(clsRef, {
       ...cls,
       competitionId,
@@ -32,9 +33,9 @@ export const migrateLocalStorageToFirestore = async (userId: string): Promise<st
     });
   });
 
-  // 학년 설정 저장
+  // 학년 설정 저장 (Phase 2.5: users 하위에 저장)
   localConfigs.forEach(config => {
-    const configRef = doc(db, 'gradeConfigs', `${competitionId}_${config.grade}`);
+    const configRef = doc(db, 'users', userId, 'gradeConfigs', `${competitionId}_${config.grade}`);
     batch.set(configRef, { ...config, competitionId });
   });
 

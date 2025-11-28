@@ -146,7 +146,8 @@ export const MatrixRecordTable: React.FC<MatrixRecordTableProps> = ({
     setSaveMessage(null);
     try {
       // 1. 기존 classes.results 저장 (호환성 유지)
-      await saveCompetitionResults(classes);
+      // Phase 2.5: userId 파라미터 추가
+      await saveCompetitionResults(user!.uid, classes);
       console.log('✅ saveCompetitionResults 완료 (기존 방식)');
 
       // 2. 🆕 records 컬렉션에도 저장 (이중 저장)
