@@ -1,0 +1,42 @@
+redirectsOrigin = "config"
+headersOrigin = "config"
+plugins = []
+headers = []
+
+[functions]
+
+[functions."*"]
+
+[build]
+publish = "/Users/iwongeun/Desktop/jumprope-competition-manager/.netlify/Users/iwongeun/Desktop/jumprope-competition-manager/dist"
+publishOrigin = "config"
+commandOrigin = "config"
+base = "/Users/iwongeun/Desktop/jumprope-competition-manager/.netlify"
+command = "npm run build"
+
+[build.environment]
+NODE_VERSION = "20"
+
+[build.processing]
+
+[build.processing.css]
+
+[build.processing.html]
+
+[build.processing.images]
+
+[build.processing.js]
+
+[build.services]
+
+[[redirects]]
+from = "/*"
+to = "/index.html"
+status = 200.0
+force = false
+
+[redirects.query]
+
+[redirects.conditions]
+
+[redirects.headers]
