@@ -406,7 +406,7 @@ export const GradeView: React.FC<GradeViewProps> = ({
           [eventId]: {
             ...currentConfig,
             selected: isSelecting,
-            targetParticipants: currentConfig.targetParticipants || event?.defaultMaxParticipants || 0
+            targetParticipants: currentConfig.targetParticipants || 0
           }
         }
       }
@@ -840,7 +840,7 @@ export const GradeView: React.FC<GradeViewProps> = ({
                     value={config.targetParticipants || ''}
                     onChange={(e) => handleEventParticipantChange(evt.id, parseInt(e.target.value) || 0)}
                     className="w-14 px-2 py-0.5 text-center text-xs border border-indigo-200 rounded focus:ring-2 focus:ring-indigo-500 outline-none"
-                    placeholder={evt.defaultMaxParticipants.toString()}
+                    placeholder="0"
                   />
                   <span className="text-[10px] text-slate-400">
                     명

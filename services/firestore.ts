@@ -1104,6 +1104,82 @@ export const createAccessCodeMappingsBatch = async (
 };
 
 // ========================================
+// 🆕 종목별 기록 초기화 (Phase 4)
+// ========================================
+
+/**
+ * 특정 종목의 기록 초기화 (날짜 + 종목 기준)
+ * - classes.results[eventId] 삭제
+ * - records 컬렉션에서 해당 조건 문서 삭제
+ */
+export const deleteEventRecords = async (
+  userId: string,
+  classIds: string[],
+  eventId: string,
+  date: string
+): Promise<{ classesUpdated: number; recordsDeleted: number }> => {
+  console.log('🗑️ 종목 기록 초기화 시작:', { userId, classIds, eventId, date });
+
+  const batch = writeBatch(db);
+  let classesUpdated = 0;
+  let recordsDeleted = 0;
+
+  // 1. 각 학급의 classes.results[eventId] 삭제
+  for (const classId of classIds) {
+    const classRef = getUserDoc(userId, 'classes', classId);
+    const classDoc = await getDoc(classRef);
+
+    if (classDoc.exists()) {
+      const classData = classDoc.data() as ClassTeam;
+      const eventResult = classData.results?.[eventId];
+
+      // 해당 날짜의 기록만 삭제
+      if (eventResult && eventResult.date === date) {
+        const updatedResults = { ...classData.results };
+        delete updatedResults[eventId];
+
+        // 총점 재계산
+        const totalScore = Object.values(updatedResults).reduce(
+          (sum, result) => sum + (result?.score || 0),
+          0
+        );
+
+        batch.update(classRef, {
+          results: updatedResults,
+          totalScore,
+          updatedAt: serverTimestamp(),
+        });
+        classesUpdated++;
+      }
+    }
+  }
+
+  // 2. records 컬렉션에서 해당 조건 문서 삭제
+  const recordsQuery = query(
+    getUserCollection(userId, 'records'),
+    where('eventId', '==', eventId),
+    where('date', '==', date)
+  );
+
+  const recordsSnapshot = await getDocs(recordsQuery);
+  recordsSnapshot.docs.forEach((docSnapshot) => {
+    // classIds에 포함된 학급의 기록만 삭제
+    const recordData = docSnapshot.data();
+    if (classIds.includes(recordData.classId)) {
+      batch.delete(docSnapshot.ref);
+      recordsDeleted++;
+    }
+  });
+
+  if (classesUpdated > 0 || recordsDeleted > 0) {
+    await batch.commit();
+  }
+
+  console.log(`✅ 종목 기록 초기화 완료: ${classesUpdated}개 학급, ${recordsDeleted}개 기록 삭제`);
+  return { classesUpdated, recordsDeleted };
+};
+
+// ========================================
 // 🆕 데이터 마이그레이션 (classes.results → records)
 // ========================================
 

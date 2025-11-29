@@ -295,6 +295,70 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
     }
   }, [IOS_AUDIO_OUTPUT_DELAY]);
 
+  // 커스텀 타이머 시작 (음원 없이)
+  const handleCustomTimerStart = useCallback(async () => {
+    if (totalSeconds <= 0) return;
+
+    setRemainingSeconds(totalSeconds);
+    setTimerState('running');
+    setIsFullscreen(true);
+    targetEndTimeRef.current = Date.now() + (totalSeconds * 1000);
+
+    // 오디오 unlock (종료 비프음을 위해)
+    await audioManager.unlock();
+  }, [totalSeconds]);
+
+  // 종료 비프음 생성 (Web Audio API)
+  const playEndBeep = useCallback(() => {
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      oscillator.frequency.value = 880; // A5 음
+      oscillator.type = 'sine';
+
+      gainNode.gain.setValueAtTime(0.5, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.5);
+
+      // 두 번째 비프 (0.2초 후)
+      setTimeout(() => {
+        const osc2 = audioContext.createOscillator();
+        const gain2 = audioContext.createGain();
+        osc2.connect(gain2);
+        gain2.connect(audioContext.destination);
+        osc2.frequency.value = 880;
+        osc2.type = 'sine';
+        gain2.gain.setValueAtTime(0.5, audioContext.currentTime);
+        gain2.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+        osc2.start(audioContext.currentTime);
+        osc2.stop(audioContext.currentTime + 0.5);
+      }, 200);
+
+      // 세 번째 비프 (0.4초 후) - 더 높은 음
+      setTimeout(() => {
+        const osc3 = audioContext.createOscillator();
+        const gain3 = audioContext.createGain();
+        osc3.connect(gain3);
+        gain3.connect(audioContext.destination);
+        osc3.frequency.value = 1320; // E6 음
+        osc3.type = 'sine';
+        gain3.gain.setValueAtTime(0.6, audioContext.currentTime);
+        gain3.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.8);
+        osc3.start(audioContext.currentTime);
+        osc3.stop(audioContext.currentTime + 0.8);
+      }, 400);
+    } catch (e) {
+      console.error('Beep failed:', e);
+    }
+  }, []);
+
   // 타이머 일시정지
   const pauseTimer = () => {
     if (targetEndTimeRef.current) {
@@ -379,6 +443,9 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
           }
           targetEndTimeRef.current = null;
 
+          // 종료 비프음 재생
+          playEndBeep();
+
           if (navigator.vibrate) {
             navigator.vibrate([200, 100, 200]);
           }
@@ -403,7 +470,7 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
         intervalRef.current = null;
       }
     };
-  }, [timerState]);
+  }, [timerState, playEndBeep]);
 
   return (
     <>
@@ -509,12 +576,25 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
                 </button>
               </div>
 
-              {/* 음원 프리셋 버튼들 */}
+              {/* 타이머 컨트롤 버튼들 */}
               <div className="flex gap-2">
+                {/* 커스텀 타이머 시작 버튼 */}
+                <button
+                  onClick={handleCustomTimerStart}
+                  className="px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1 shadow-md disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation active:bg-green-800"
+                  disabled={timerState === 'running' || totalSeconds <= 0}
+                  title="설정된 시간으로 타이머 시작"
+                >
+                  <Play className="w-3 h-3" />
+                  시작
+                </button>
+
+                {/* 음원 프리셋 버튼들 */}
                 <button
                   onClick={handle30SecPreset}
                   className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1 shadow-md disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation active:bg-indigo-800"
                   disabled={timerState === 'running' || !audioReady}
+                  title="30초 음원과 함께 시작"
                 >
                   <Music className="w-3 h-3" />
                   30초
@@ -523,6 +603,7 @@ export const CompetitionTimer: React.FC<CompetitionTimerProps> = ({
                   onClick={handle60SecPreset}
                   className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1 shadow-md disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation active:bg-indigo-800"
                   disabled={timerState === 'running' || !audioReady}
+                  title="60초 음원과 함께 시작"
                 >
                   <Music className="w-3 h-3" />
                   60초

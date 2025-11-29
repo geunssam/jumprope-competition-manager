@@ -344,7 +344,7 @@ export const SessionNavBar: React.FC<SessionNavBarProps> = ({
                 >
                   {events.map(event => (
                     <option key={event.id} value={event.id}>
-                      {event.name} ({event.defaultTimeLimit}초)
+                      {event.name}
                     </option>
                   ))}
                 </select>

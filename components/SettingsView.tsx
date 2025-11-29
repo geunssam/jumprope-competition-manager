@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { CompetitionEvent, EventType } from '../types';
 import { Button } from './Button';
-import { Plus, Trash2, Edit2, Save, X, Clock, Users, Copy } from 'lucide-react';
+import { Plus, Trash2, Edit2, Save, X, Copy } from 'lucide-react';
 
 interface SettingsViewProps {
   events: CompetitionEvent[];
@@ -20,8 +20,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ events, onUpdateEven
       id: `evt_${Date.now()}`,
       name: '새 종목',
       type: 'INDIVIDUAL',
-      defaultTimeLimit: 60,
-      defaultMaxParticipants: 0,
       description: '',
     };
     onUpdateEvents([...events, newEvent]);
@@ -241,27 +239,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ events, onUpdateEven
                       />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="block text-[10px] font-semibold text-slate-500 mb-1">시간 (초)</label>
-                        <input
-                          type="number"
-                          value={tempEvent.defaultTimeLimit}
-                          onChange={e => setTempEvent(prev => ({ ...prev, defaultTimeLimit: parseInt(e.target.value) || 0 }))}
-                          className="w-full px-2 py-1.5 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-semibold text-slate-500 mb-1">인원 (명)</label>
-                        <input
-                          type="number"
-                          value={tempEvent.defaultMaxParticipants}
-                          onChange={e => setTempEvent(prev => ({ ...prev, defaultMaxParticipants: parseInt(e.target.value) || 0 }))}
-                          className="w-full px-2 py-1.5 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
-                          placeholder="0=무제한"
-                        />
-                      </div>
-                    </div>
                     <div className="flex justify-end gap-2 pt-1">
                       <Button variant="secondary" size="sm" onClick={cancelEdit}>
                         <X className="w-3 h-3" />
@@ -289,14 +266,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ events, onUpdateEven
                       {event.description && (
                         <p className="text-xs text-slate-500 line-clamp-2">{event.description}</p>
                       )}
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        <span className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded text-[10px] text-slate-600 font-medium">
-                          <Clock className="w-3 h-3" /> {event.defaultTimeLimit > 0 ? `${event.defaultTimeLimit}초` : '무제한'}
-                        </span>
-                        <span className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded text-[10px] text-slate-600 font-medium">
-                          <Users className="w-3 h-3" /> {event.defaultMaxParticipants > 0 ? `${event.defaultMaxParticipants}명` : '무제한'}
-                        </span>
-                      </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <Button variant="secondary" size="sm" onClick={() => startEdit(event)} className="flex-1">

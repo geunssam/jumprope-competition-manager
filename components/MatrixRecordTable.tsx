@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ClassTeam, CompetitionEvent, StudentRecord, RecordMode } from '../types';
-import { ChevronDown, ChevronRight, Edit3, Save, Users, X } from 'lucide-react';
-import { saveCompetitionResults, createRecordsBatch } from '../services/firestore';
+import { ChevronDown, ChevronRight, Edit3, Save, Users, X, Trash2 } from 'lucide-react';
+import { saveCompetitionResults, createRecordsBatch, deleteEventRecords, getGradeClasses } from '../services/firestore';
 import { useAuth } from '../contexts/AuthContext';
 
 interface MatrixRecordTableProps {
@@ -37,6 +37,10 @@ export const MatrixRecordTable: React.FC<MatrixRecordTableProps> = ({
 
   // 멤버 목록 모달 상태
   const [memberModal, setMemberModal] = useState<{ members: string[] } | null>(null);
+
+  // 초기화 확인 모달 상태
+  const [resetConfirm, setResetConfirm] = useState<{ eventId: string; eventName: string } | null>(null);
+  const [resetting, setResetting] = useState(false);
 
   // 각 학급별 총점 계산
   const getClassTotalScore = (classTeam: ClassTeam) => {
@@ -128,6 +132,36 @@ export const MatrixRecordTable: React.FC<MatrixRecordTableProps> = ({
     });
 
     return records;
+  };
+
+  // 종목 기록 초기화 핸들러
+  const handleResetEventRecords = async () => {
+    if (!resetConfirm || !user?.uid) return;
+
+    setResetting(true);
+    try {
+      const classIds = classes.map(c => c.id);
+      const result = await deleteEventRecords(
+        user.uid,
+        classIds,
+        resetConfirm.eventId,
+        selectedDate
+      );
+
+      // Firestore에서 최신 데이터 가져오기
+      const updatedClasses = await getGradeClasses(user.uid, competitionId, grade);
+      onUpdateClasses(updatedClasses);
+
+      setSaveMessage(`✅ "${resetConfirm.eventName}" 기록이 초기화되었습니다. (${result.recordsDeleted}개 삭제)`);
+      setTimeout(() => setSaveMessage(null), 3000);
+    } catch (error) {
+      console.error('❌ 기록 초기화 실패:', error);
+      setSaveMessage('❌ 기록 초기화에 실패했습니다.');
+      setTimeout(() => setSaveMessage(null), 3000);
+    } finally {
+      setResetting(false);
+      setResetConfirm(null);
+    }
   };
 
   // 저장 핸들러
@@ -296,32 +330,45 @@ export const MatrixRecordTable: React.FC<MatrixRecordTableProps> = ({
                     isEvenRow ? 'bg-indigo-50' : 'bg-indigo-100/50'
                   } px-3 py-2 border-r-2 border-indigo-200 w-[160px]`}
                 >
-                  <button
-                    onClick={() => toggleEventRow(evt.id)}
-                    className="flex items-center gap-2 w-full text-left hover:text-indigo-700 transition-colors"
-                  >
-                    {isExpanded ? (
-                      <ChevronDown className="w-4 h-4 text-indigo-600 flex-shrink-0" />
-                    ) : (
-                      <ChevronRight className="w-4 h-4 text-slate-400 flex-shrink-0" />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="font-bold text-sm text-slate-900 truncate whitespace-nowrap">
-                        {evt.name}
-                        <span
-                          className={`ml-1 text-[10px] px-1.5 py-0.5 rounded font-normal ${
-                            evt.type === 'TEAM'
-                              ? 'bg-purple-100 text-purple-700'
-                              : evt.type === 'PAIR'
-                              ? 'bg-green-100 text-green-700'
-                              : 'bg-blue-100 text-blue-700'
-                          }`}
-                        >
-                          {evt.type === 'TEAM' ? '단체' : evt.type === 'PAIR' ? '짝' : '개인'}
-                        </span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => toggleEventRow(evt.id)}
+                      className="flex items-center gap-2 flex-1 text-left hover:text-indigo-700 transition-colors min-w-0"
+                    >
+                      {isExpanded ? (
+                        <ChevronDown className="w-4 h-4 text-indigo-600 flex-shrink-0" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-bold text-sm text-slate-900 truncate whitespace-nowrap">
+                          {evt.name}
+                          <span
+                            className={`ml-1 text-[10px] px-1.5 py-0.5 rounded font-normal ${
+                              evt.type === 'TEAM'
+                                ? 'bg-purple-100 text-purple-700'
+                                : evt.type === 'PAIR'
+                                ? 'bg-green-100 text-green-700'
+                                : 'bg-blue-100 text-blue-700'
+                            }`}
+                          >
+                            {evt.type === 'TEAM' ? '단체' : evt.type === 'PAIR' ? '짝' : '개인'}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  </button>
+                    </button>
+                    {/* 종목 기록 초기화 버튼 */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setResetConfirm({ eventId: evt.id, eventName: evt.name });
+                      }}
+                      className="p-1 hover:bg-red-100 rounded transition-colors flex-shrink-0"
+                      title={`${evt.name} 기록 초기화`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-red-400 hover:text-red-600" />
+                    </button>
+                  </div>
                 </td>
 
                 {/* 각 학급별 데이터 셀 */}
@@ -733,6 +780,61 @@ export const MatrixRecordTable: React.FC<MatrixRecordTableProps> = ({
             >
               닫기
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* 기록 초기화 확인 모달 */}
+      {resetConfirm && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          onClick={() => !resetting && setResetConfirm(null)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-2xl p-6 max-w-sm w-full mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-center mb-4">
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                <Trash2 className="w-6 h-6 text-red-600" />
+              </div>
+            </div>
+            <h3 className="text-lg font-bold text-slate-900 text-center mb-2">
+              기록 초기화
+            </h3>
+            <p className="text-sm text-slate-600 text-center mb-4">
+              <strong>"{resetConfirm.eventName}"</strong>의<br />
+              {selectedDate} 기록을 삭제하시겠습니까?
+            </p>
+            <p className="text-xs text-red-500 text-center mb-6">
+              이 작업은 되돌릴 수 없습니다.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setResetConfirm(null)}
+                disabled={resetting}
+                className="flex-1 py-2.5 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors font-medium disabled:opacity-50"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleResetEventRecords}
+                disabled={resetting}
+                className="flex-1 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {resetting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    삭제 중...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    삭제
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

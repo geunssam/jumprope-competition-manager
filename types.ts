@@ -19,8 +19,6 @@ export interface CompetitionEvent {
   id: string;
   name: string;
   type: EventType;
-  defaultTimeLimit: number; // 0 for no limit
-  defaultMaxParticipants: number; // 0 for unlimited
   description?: string;
 }
 
